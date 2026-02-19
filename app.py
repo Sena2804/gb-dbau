@@ -200,7 +200,7 @@ st.markdown(f"""
     /* --- Sidebar --- */
     section[data-testid="stSidebar"] .stMarkdown h3 {{ font-size: 1.1rem; }}
 
-    {"" if not light else """
+    {"" if not light else '''
     /* --- Streamlit native overrides for light mode --- */
     [data-testid="stApp"] {
         background-color: #ffffff !important;
@@ -375,7 +375,7 @@ st.markdown(f"""
     #sticky-clone .kpi-green .kpi-icon .ms, #sticky-clone .kpi-green .kpi-value { color: #3fb950 !important; }
     #sticky-clone .kpi-red .kpi-icon .ms, #sticky-clone .kpi-red .kpi-value { color: #f85149 !important; }
     #sticky-clone .kpi-muted .kpi-icon .ms, #sticky-clone .kpi-muted .kpi-value { color: #57606a !important; }
-    """}
+    '''}
 </style>
 """, unsafe_allow_html=True)
 
