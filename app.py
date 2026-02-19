@@ -1,3 +1,4 @@
+# -*- coding: utf-8 -*-
 """Application Streamlit - Suivi de session CNBAU Bourse de Russie."""
 
 import io
@@ -6,7 +7,18 @@ from pathlib import Path
 
 import pandas as pd
 import streamlit as st
-import streamlit.components.v1 as components
+# streamlit.components.v1 may not be discovered by some static analyzers; import robustly
+try:
+    import streamlit.components.v1 as components  # type: ignore
+except Exception:
+    # Fallback to attribute access if available, otherwise provide a minimal shim
+    try:
+        components = st.components.v1  # type: ignore
+    except Exception:
+        class _DummyComponents:
+            def html(self, *args, **kwargs):
+                return None
+        components = _DummyComponents()
 
 import database as db
 
@@ -187,7 +199,23 @@ st.markdown(f"""
     /* --- Sidebar --- */
     section[data-testid="stSidebar"] .stMarkdown h3 {{ font-size: 1.1rem; }}
 
-    {"" if not light else """
+    light_css = ""
+
+if light:
+    light_css = """
+    /* --- Streamlit native overrides for light mode --- */
+    [data-testid="stApp"] {
+        background-color: #ffffff !important;
+    }
+    [data-testid="stAppViewContainer"] {
+        background-color: #ffffff !important;
+        color: #24292f !important;
+    }
+    [data-testid="stSidebar"] {
+        background-color: #f6f8fa !important;
+        border-right-color: #d0d7de !important;
+    }
+    """
     /* --- Streamlit native overrides for light mode --- */
     [data-testid="stApp"] {
         background-color: #ffffff !important;
@@ -319,16 +347,17 @@ st.markdown(f"""
     .niveau-label { color: var(--accent) !important; }
     .section-header .ms { color: var(--accent) !important; }
     .app-title .ms { color: var(--accent) !important; }
-    """}
+
 </style>
 """, unsafe_allow_html=True)
+
 
 # ── Titre (rendu normalement, le sticky sera appliqué via JS) ────────────────
 st.markdown("""
 <div class="app-title">
     <span class="ms" style="font-size:36px">school</span>
     <div>
-        <h1>CNBAU — Bourse de Russie</h1>
+    <h1>CNBAU - Bourse de Russie</h1>
         <span class="sub">Session de la Commission Nationale des Bourses et Aides Universitaires</span>
     </div>
 </div>
@@ -431,7 +460,7 @@ def render_quotas():
             <div class="quota-card {css_class}">
                 <div class="quota-filiere">{fil}</div>
                 <div class="quota-bar"><div class="quota-bar-fill" style="width:{pct}%"></div></div>
-                <div class="quota-text">{selectionnes}/{places} — {status_text}</div>
+                  <div class="quota-text">{selectionnes}/{places} - {status_text}</div>
             </div>"""
         html += '</div>'
         st.markdown(html, unsafe_allow_html=True)
@@ -632,7 +661,7 @@ def render_decisions():
             candidat = results[0]
         else:
             st.info(f"{len(results)} résultats trouvés. Sélectionnez un candidat :")
-            options = {f"{r['id_demande']} — {r['name']} ({r['filiere']}, {r['niveau_etudes']})": r["id_demande"] for r in results}
+            options = {f"{r['id_demande']} - {r['name']} ({r['filiere']}, {r['niveau_etudes']})": r["id_demande"] for r in results}
             selected = st.selectbox("Candidat", list(options.keys()), label_visibility="collapsed")
             candidat = db.search_by_field("numero", options[selected])
 
@@ -693,7 +722,7 @@ def render_decisions():
                 st.markdown(f"""
                 <div class="alert-quota">
                     <span class="ms">block</span>
-                    Quota atteint — avis favorable impossible
+                    Quota atteint - avis favorable impossible
                 </div>
                 """, unsafe_allow_html=True)
                 st.markdown("<div style='height:0.5rem'></div>", unsafe_allow_html=True)
@@ -703,7 +732,7 @@ def render_decisions():
                 <div style="font-size:0.82rem; color:{COLORS['text_muted']}; text-transform:uppercase; letter-spacing:0.5px; margin-bottom:4px;">
                     {filiere} ({niveau})
                 </div>
-                <div style="font-size:0.9rem; color:{COLORS['text_muted']};">Pas de quota défini — {selectionnes} favorable(s)</div>
+                <div style="font-size:0.9rem; color:{COLORS['text_muted']};">Pas de quota défini - {selectionnes} favorable(s)</div>
             </div>
             """, unsafe_allow_html=True)
 
@@ -793,7 +822,7 @@ components.html(f"""
     header.innerHTML = `
         <div style="display:flex;align-items:center;gap:10px;margin-bottom:0.5rem">
             <span class="ms" style="font-size:24px;color:{_sticky_accent};font-family:'Material Symbols Rounded'">school</span>
-            <span style="font-size:1.2rem;font-weight:700;color:{_sticky_text}">CNBAU — Bourse de Russie</span>
+            <span style="font-size:1.2rem;font-weight:700;color:{_sticky_text}">CNBAU - Bourse de Russie</span>
         </div>
     `;
     const kpiClone = kpiEl.cloneNode(true);
@@ -836,11 +865,11 @@ components.html(f"""
 # ── Sidebar ──────────────────────────────────────────────────────────────────
 with st.sidebar:
     st.markdown(f"""
-    <div style="display:flex; align-items:center; gap:8px; margin-bottom:1rem;">
-        <span class="ms" style="font-size:24px; color:{COLORS['accent']};">settings</span>
-        <h3 style="margin:0; font-size:1.1rem; color:{COLORS['text_primary']};">Administration</h3>
-    </div>
-    """, unsafe_allow_html=True)
+<div style="display:flex; align-items:center; gap:8px; margin-bottom:1rem;">
+    <span class="ms" style="font-size:24px; color:{COLORS['accent']};">settings</span>
+    <h3 style="margin:0; font-size:1.1rem; color:{COLORS['text_primary']};">Administration</h3>
+</div>
+""", unsafe_allow_html=True)
 
     st.toggle("Mode clair", key="light_mode", value=light)
 
