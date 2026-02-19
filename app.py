@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """Application Streamlit - Suivi de session CNBAU Bourse de Russie."""
 
 import io
@@ -7,18 +6,7 @@ from pathlib import Path
 
 import pandas as pd
 import streamlit as st
-# streamlit.components.v1 may not be discovered by some static analyzers; import robustly
-try:
-    import streamlit.components.v1 as components  # type: ignore
-except Exception:
-    # Fallback to attribute access if available, otherwise provide a minimal shim
-    try:
-        components = st.components.v1  # type: ignore
-    except Exception:
-        class _DummyComponents:
-            def html(self, *args, **kwargs):
-                return None
-        components = _DummyComponents()
+import streamlit.components.v1 as components
 
 import database as db
 
@@ -212,23 +200,7 @@ st.markdown(f"""
     /* --- Sidebar --- */
     section[data-testid="stSidebar"] .stMarkdown h3 {{ font-size: 1.1rem; }}
 
-    light_css = ""
-
-if light:
-    light_css = """
-    /* --- Streamlit native overrides for light mode --- */
-    [data-testid="stApp"] {
-        background-color: #ffffff !important;
-    }
-    [data-testid="stAppViewContainer"] {
-        background-color: #ffffff !important;
-        color: #24292f !important;
-    }
-    [data-testid="stSidebar"] {
-        background-color: #f6f8fa !important;
-        border-right-color: #d0d7de !important;
-    }
-    """
+    {"" if not light else '''
     /* --- Streamlit native overrides for light mode --- */
     [data-testid="stApp"] {
         background-color: #ffffff !important;
@@ -403,17 +375,16 @@ if light:
     #sticky-clone .kpi-green .kpi-icon .ms, #sticky-clone .kpi-green .kpi-value { color: #3fb950 !important; }
     #sticky-clone .kpi-red .kpi-icon .ms, #sticky-clone .kpi-red .kpi-value { color: #f85149 !important; }
     #sticky-clone .kpi-muted .kpi-icon .ms, #sticky-clone .kpi-muted .kpi-value { color: #57606a !important; }
-    """}
+    '''}
 </style>
 """, unsafe_allow_html=True)
-
 
 # ── Titre (rendu normalement, le sticky sera appliqué via JS) ────────────────
 st.markdown("""
 <div class="app-title">
     <span class="ms" style="font-size:36px">school</span>
     <div>
-    <h1>CNBAU - Bourse de Russie</h1>
+        <h1>CNBAU — Bourse de Russie</h1>
         <span class="sub">Session de la Commission Nationale des Bourses et Aides Universitaires</span>
     </div>
 </div>
@@ -516,7 +487,7 @@ def render_quotas():
             <div class="quota-card {css_class}">
                 <div class="quota-filiere">{fil}</div>
                 <div class="quota-bar"><div class="quota-bar-fill" style="width:{pct}%"></div></div>
-                  <div class="quota-text">{selectionnes}/{places} - {status_text}</div>
+                <div class="quota-text">{selectionnes}/{places} — {status_text}</div>
             </div>"""
         html += '</div>'
         st.markdown(html, unsafe_allow_html=True)
@@ -716,7 +687,7 @@ def render_decisions():
             candidat = results[0]
         else:
             st.info(f"{len(results)} résultats trouvés. Sélectionnez un candidat :")
-            options = {f"{r['id_demande']} - {r['name']} ({r['filiere']}, {r['niveau_etudes']})": r["id_demande"] for r in results}
+            options = {f"{r['id_demande']} — {r['name']} ({r['filiere']}, {r['niveau_etudes']})": r["id_demande"] for r in results}
             selected = st.selectbox("Candidat", list(options.keys()), label_visibility="collapsed")
             candidat = db.search_by_field("numero", options[selected])
 
@@ -777,7 +748,7 @@ def render_decisions():
                 st.markdown(f"""
                 <div class="alert-quota">
                     <span class="ms">block</span>
-                    Quota atteint - avis favorable impossible
+                    Quota atteint — avis favorable impossible
                 </div>
                 """, unsafe_allow_html=True)
                 st.markdown("<div style='height:0.5rem'></div>", unsafe_allow_html=True)
@@ -787,7 +758,7 @@ def render_decisions():
                 <div style="font-size:0.82rem; color:{COLORS['text_muted']}; text-transform:uppercase; letter-spacing:0.5px; margin-bottom:4px;">
                     {filiere} ({niveau})
                 </div>
-                <div style="font-size:0.9rem; color:{COLORS['text_muted']};">Pas de quota défini - {selectionnes} favorable(s)</div>
+                <div style="font-size:0.9rem; color:{COLORS['text_muted']};">Pas de quota défini — {selectionnes} favorable(s)</div>
             </div>
             """, unsafe_allow_html=True)
 
@@ -796,7 +767,7 @@ def render_decisions():
             favorable_disabled = quota_atteint and candidat["avis"] != "Favorable"
             if st.button(
                 "Favorable",
-                key=f"fav_{candidat['id_demande']}",
+                key=f"search_fav_{candidat['id_demande']}",
                 disabled=favorable_disabled,
                 use_container_width=True,
                 type="primary",
@@ -807,14 +778,14 @@ def render_decisions():
         with btn_col2:
             if st.button(
                 "Défavorable",
-                key=f"def_{candidat['id_demande']}",
+                key=f"search_def_{candidat['id_demande']}",
                 use_container_width=True,
             ):
                 db.update_avis(candidat["id_demande"], "Défavorable")
                 st.rerun(scope="app")
 
         if candidat["avis"] != "En attente":
-            if st.button("Remettre en attente", key=f"reset_{candidat['id_demande']}", use_container_width=True):
+            if st.button("Remettre en attente", key=f"search_reset_{candidat['id_demande']}", use_container_width=True):
                 db.update_avis(candidat["id_demande"], "En attente")
                 st.rerun(scope="app")
 
@@ -881,7 +852,7 @@ components.html(f"""
     header.innerHTML = `
         <div style="display:flex;align-items:center;gap:10px;margin-bottom:0.5rem">
             <span class="ms" style="font-size:24px;color:{_sticky_accent};font-family:'Material Symbols Rounded'">school</span>
-            <span style="font-size:1.2rem;font-weight:700;color:{_sticky_text}">CNBAU - Bourse de Russie</span>
+            <span style="font-size:1.2rem;font-weight:700;color:{_sticky_text}">CNBAU — Bourse de Russie</span>
         </div>
     `;
     const kpiClone = kpiEl.cloneNode(true);
@@ -925,11 +896,11 @@ components.html(f"""
 # ── Sidebar ──────────────────────────────────────────────────────────────────
 with st.sidebar:
     st.markdown(f"""
-<div style="display:flex; align-items:center; gap:8px; margin-bottom:1rem;">
-    <span class="ms" style="font-size:24px; color:{COLORS['accent']};">settings</span>
-    <h3 style="margin:0; font-size:1.1rem; color:{COLORS['text_primary']};">Administration</h3>
-</div>
-""", unsafe_allow_html=True)
+    <div style="display:flex; align-items:center; gap:8px; margin-bottom:1rem;">
+        <span class="ms" style="font-size:24px; color:{COLORS['accent']};">settings</span>
+        <h3 style="margin:0; font-size:1.1rem; color:{COLORS['text_primary']};">Administration</h3>
+    </div>
+    """, unsafe_allow_html=True)
 
     def _on_theme_toggle():
         st.session_state["_theme"] = "light" if st.session_state["_theme_toggle"] else "dark"
