@@ -364,13 +364,27 @@ def get_stats() -> dict:
 
 
 def export_to_excel(output_path: str) -> str:
-    """Exporte les candidatures avec structure hiérarchique."""
-    niveau_order = ["Licence", "Master", "Doctorat", "Spécialisation"]
+    """Exporte les candidatures triées par numéro de demande."""
     df = get_all_candidatures()
-    df["niveau_order"] = df["niveau_etudes"].map(
-        {v: i for i, v in enumerate(niveau_order)}
-    )
-    df = df.sort_values(["niveau_order", "filiere", "numero"]).drop(columns=["niveau_order"])
+    df = df.drop(columns=["id_demande"])
+    df = df.sort_values("numero")
+    col_order = [
+        "numero", "sexe", "id_russe", "name", "date_lieu_naissance",
+        "diplome_filiere_annee", "observation", "filiere", "niveau_etudes", "avis",
+    ]
+    df = df[[c for c in col_order if c in df.columns]]
+    df = df.rename(columns={
+        "numero": "NUMÉRO",
+        "sexe": "SEXE",
+        "id_russe": "ID RUSSE",
+        "name": "NOM & PRÉNOM",
+        "date_lieu_naissance": "DATE & LIEU DE NAISSANCE",
+        "diplome_filiere_annee": "DIPLÔME, FILIÈRE & ANNÉE",
+        "observation": "OBSERVATION",
+        "filiere": "FILIÈRE",
+        "niveau_etudes": "NIVEAU D'ÉTUDES",
+        "avis": "AVIS",
+    })
     df.to_excel(output_path, index=False, engine="openpyxl")
     return output_path
 
