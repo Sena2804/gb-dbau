@@ -43,6 +43,7 @@ def init_db():
             name TEXT NOT NULL, 
             date_lieu_naissance TEXT,
             diplome_filiere_annee TEXT,
+            moyenne REAL,
             observation TEXT,
             filiere TEXT NOT NULL,
             niveau_etudes TEXT NOT NULL,
@@ -71,7 +72,7 @@ def _parse_real_excel(excel_path: str) -> list[dict]:
     """Parse le fichier CNaBAU structuré avec lignes de séparation niveau/filière."""
     from openpyxl import load_workbook
 
-    wb = load_workbook(excel_path, data_only=True)
+    wb = load_workbook(excel_path, data_only=True) 
     ws = wb.active
 
     current_niveau = ""
@@ -114,6 +115,12 @@ def _parse_real_excel(excel_path: str) -> list[dict]:
         def cell_str(idx):
             v = row[idx].value if idx < len(row) else None
             return str(v).strip() if v is not None else ""
+        
+        raw_moyenne = row[6].value
+        try:
+            moyenne = float(raw_moyenne) if raw_moyenne is not None else 0.0
+        except (ValueError, TypeError):
+            moyenne = 0.0
 
         id_russe = cell_str(2)
         candidates.append({
@@ -125,6 +132,7 @@ def _parse_real_excel(excel_path: str) -> list[dict]:
             "date_lieu_naissance": cell_str(4),
             "diplome_filiere_annee": cell_str(5),
             "observation": cell_str(7),
+            "moyenne": moyenne,
             "filiere": current_filiere,
             "niveau_etudes": current_niveau,
             "avis": cell_str(8) or "En attente",
@@ -208,10 +216,10 @@ def _load_real_excel(excel_path: str) -> int:
         conn.execute(
             """INSERT OR REPLACE INTO candidatures
                (id_demande, id_russe, numero, sexe, name, date_lieu_naissance,
-                diplome_filiere_annee, observation, filiere, niveau_etudes, avis)
-               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                diplome_filiere_annee, moyenne, observation, filiere, niveau_etudes, avis)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
             (c["id_demande"], c["id_russe"], c["numero"], c["sexe"], c["name"],
-             c["date_lieu_naissance"], c["diplome_filiere_annee"],
+             c["date_lieu_naissance"], c["diplome_filiere_annee"], c["moyenne"],
              c["observation"], c["filiere"], c["niveau_etudes"], c["avis"]),
         )
     conn.commit()
@@ -370,7 +378,7 @@ def export_to_excel(output_path: str) -> str:
     df = df.sort_values("numero")
     col_order = [
         "numero", "sexe", "id_russe", "name", "date_lieu_naissance",
-        "diplome_filiere_annee", "observation", "filiere", "niveau_etudes", "avis",
+        "diplome_filiere_annee", "moyenne", "observation", "filiere", "niveau_etudes", "avis",
     ]
     df = df[[c for c in col_order if c in df.columns]]
     df = df.rename(columns={
@@ -380,6 +388,7 @@ def export_to_excel(output_path: str) -> str:
         "name": "NOM & PRÉNOM",
         "date_lieu_naissance": "DATE & LIEU DE NAISSANCE",
         "diplome_filiere_annee": "DIPLÔME, FILIÈRE & ANNÉE",
+        "moyenne": "MOYENNE / MENTION",
         "observation": "OBSERVATION",
         "filiere": "FILIÈRE",
         "niveau_etudes": "NIVEAU D'ÉTUDES",
