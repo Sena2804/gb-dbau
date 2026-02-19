@@ -43,6 +43,7 @@ def init_db():
             name TEXT NOT NULL, 
             date_lieu_naissance TEXT,
             diplome_filiere_annee TEXT,
+            moyenne TEXT,
             observation TEXT,
             filiere TEXT NOT NULL,
             niveau_etudes TEXT NOT NULL,
@@ -124,6 +125,7 @@ def _parse_real_excel(excel_path: str) -> list[dict]:
             "name": cell_str(3),
             "date_lieu_naissance": cell_str(4),
             "diplome_filiere_annee": cell_str(5),
+            "moyenne": cell_str(6),
             "observation": cell_str(7),
             "filiere": current_filiere,
             "niveau_etudes": current_niveau,
@@ -208,10 +210,10 @@ def _load_real_excel(excel_path: str) -> int:
         conn.execute(
             """INSERT OR REPLACE INTO candidatures
                (id_demande, id_russe, numero, sexe, name, date_lieu_naissance,
-                diplome_filiere_annee, observation, filiere, niveau_etudes, avis)
-               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                diplome_filiere_annee, moyenne, observation, filiere, niveau_etudes, avis)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
             (c["id_demande"], c["id_russe"], c["numero"], c["sexe"], c["name"],
-             c["date_lieu_naissance"], c["diplome_filiere_annee"],
+             c["date_lieu_naissance"], c["diplome_filiere_annee"], c["moyenne"],
              c["observation"], c["filiere"], c["niveau_etudes"], c["avis"]),
         )
     conn.commit()
@@ -370,7 +372,7 @@ def export_to_excel(output_path: str) -> str:
     df = df.sort_values("numero")
     col_order = [
         "numero", "sexe", "id_russe", "name", "date_lieu_naissance",
-        "diplome_filiere_annee", "observation", "filiere", "niveau_etudes", "avis",
+        "diplome_filiere_annee", "moyenne", "observation", "filiere", "niveau_etudes", "avis",
     ]
     df = df[[c for c in col_order if c in df.columns]]
     df = df.rename(columns={
@@ -380,6 +382,7 @@ def export_to_excel(output_path: str) -> str:
         "name": "NOM & PRÉNOM",
         "date_lieu_naissance": "DATE & LIEU DE NAISSANCE",
         "diplome_filiere_annee": "DIPLÔME, FILIÈRE & ANNÉE",
+        "moyenne": "MOYENNE",
         "observation": "OBSERVATION",
         "filiere": "FILIÈRE",
         "niveau_etudes": "NIVEAU D'ÉTUDES",

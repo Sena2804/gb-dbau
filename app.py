@@ -580,8 +580,8 @@ page = st.session_state["page"]
 page_df = filtered_df.iloc[(page - 1) * PAGE_SIZE : page * PAGE_SIZE]
 
 # En-tête
-header_cols = st.columns([0.5, 2.5, 2, 1, 1.5, 0.3, 2])
-for col, label in zip(header_cols, ["N°", "Nom", "Filière", "Niveau", "Avis", "", "Actions"]):
+header_cols = st.columns([0.5, 2.5, 2, 1, 0.8, 1.5, 0.3, 2])
+for col, label in zip(header_cols, ["N°", "Nom", "Filière", "Niveau", "Moy.", "Avis", "", "Actions"]):
     col.markdown(f"**{label}**")
 
 st.divider()
@@ -589,7 +589,7 @@ st.divider()
 # Lignes
 fav_counts_local = db.get_favorables_count()
 for _, row in page_df.iterrows():
-    cols = st.columns([0.5, 2.5, 2, 1, 1.5, 0.3, 2])
+    cols = st.columns([0.5, 2.5, 2, 1, 0.8, 1.5, 0.3, 2])
     _num = row.get("numero", row.get("id_demande", ""))
     cols[0].markdown(
         f'<span class="num-badge">{_num}</span>',
@@ -598,9 +598,10 @@ for _, row in page_df.iterrows():
     cols[1].write(row["name"])
     cols[2].write(row["filiere"])
     cols[3].write(row["niveau_etudes"])
+    cols[4].write(row.get("moyenne", ""))
 
     avis = row["avis"]
-    cols[4].markdown(render_status(avis), unsafe_allow_html=True)
+    cols[5].markdown(render_status(avis), unsafe_allow_html=True)
 
     id_demande = row["id_demande"]
     key_quota = (row["niveau_etudes"], row["filiere"])
@@ -608,7 +609,7 @@ for _, row in page_df.iterrows():
     current_fav = fav_counts_local.get(key_quota, 0)
     quota_full = places is not None and current_fav >= places
 
-    with cols[6]:
+    with cols[7]:
         b1, b2, b3 = st.columns(3)
         if b1.button("", key=f"fav_{id_demande}", icon=":material/check_circle:", disabled=(avis == "Favorable") or (quota_full and avis != "Favorable"), help="Favorable"):
             db.update_avis(id_demande, "Favorable")
