@@ -17,7 +17,7 @@ st.set_page_config(
 
 NIVEAU_ORDER = ["Licence", "Master", "Doctorat", "Spécialisation"]
 
-# ── Mode clair / sombre ──────────────────────────────────────────────────────
+# Mode clair / sombre
 if "_theme" not in st.session_state:
     st.session_state["_theme"] = "dark"
 light = st.session_state["_theme"] == "light"
@@ -34,7 +34,7 @@ COLORS = {
     "shadow":        "rgba(0,0,0,0.1)"     if light else "rgba(0,0,0,0.3)",
 }
 
-# ── Icônes Material Symbols + CSS global ─────────────────────────────────────
+# Icônes Material Symbols + CSS global
 st.markdown(f"""
 <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Rounded:opsz,wght,FILL,GRAD@24,400,1,0" rel="stylesheet">
 <style>
@@ -379,7 +379,7 @@ st.markdown(f"""
 </style>
 """, unsafe_allow_html=True)
 
-# ── Titre (rendu normalement, le sticky sera appliqué via JS) ────────────────
+# Titre (rendu normalement, le sticky sera appliqué via JS)
 st.markdown("""
 <div class="app-title">
     <span class="ms" style="font-size:36px">school</span>
@@ -390,7 +390,7 @@ st.markdown("""
 </div>
 """, unsafe_allow_html=True)
 
-# ── Initialisation ───────────────────────────────────────────────────────────
+# Initialisation
 db.init_db()
 
 if not db.is_db_loaded():
@@ -421,7 +421,7 @@ if not db.is_db_loaded():
     st.stop()
 
 
-# ── Fonctions utilitaires ────────────────────────────────────────────────────
+# Fonctions utilitaires
 def render_status(avis: str) -> str:
     if avis == "Favorable":
         return '<span class="badge badge-favorable"><span class="ms">check_circle</span>Favorable</span>'
@@ -434,13 +434,13 @@ def icon(name: str) -> str:
     return f'<span class="ms">{name}</span>'
 
 
-# ── Données globales ─────────────────────────────────────────────────────────
+# Données globales
 all_df = db.get_all_candidatures()
 quotas = db.get_quotas()
 favorables_count = db.get_favorables_count()
 
 
-# ── KPIs ─────────────────────────────────────────────────────────────────────
+# KPIs
 stats = db.get_stats()
 kpis = [
     ("groups", stats["total"], "Total", ""),
@@ -460,7 +460,7 @@ for ic, val, label, cls in kpis:
 kpi_html += '</div>'
 st.markdown(kpi_html, unsafe_allow_html=True)
 
-# ── Quotas par filière ───────────────────────────────────────────────────────
+# Quotas par filière
 @st.fragment
 def render_quotas():
     fav = db.get_favorables_count()
@@ -497,7 +497,7 @@ render_quotas()
 
 st.markdown("<div style='height:1rem'></div>", unsafe_allow_html=True)
 
-# ── Filtres ──────────────────────────────────────────────────────────────────
+# Filtres
 st.markdown("""
 <div class="section-header">
     <span class="ms">filter_list</span>
@@ -528,14 +528,14 @@ if filtre_avis:
 
 filtered_df = filtered_df.copy()
 
-# ── KPIs filtrés ─────────────────────────────────────────────────────────────
+# KPIs filtrés
 if len(filtered_df) < len(all_df):
     f_total = len(filtered_df)
     f_fav = len(filtered_df[filtered_df["avis"] == "Favorable"])
     f_def = len(filtered_df[filtered_df["avis"] == "Défavorable"])
     st.caption(f"Filtre actif : {f_total} candidatures | {f_fav} favorables | {f_def} défavorables | {f_total - f_fav - f_def} en attente")
 
-# ── Tableau des candidatures ─────────────────────────────────────────────────
+# Tableau des candidatures
 st.markdown("""
 <div class="section-header">
     <span class="ms">list_alt</span>
@@ -552,7 +552,7 @@ else:
     sort_cols.append("name")
 filtered_df = filtered_df.sort_values(sort_cols).drop(columns=["niveau_order"])
 
-# ── Tableau paginé avec boutons d'avis ───────────────────────────────────────
+# Tableau paginé avec boutons d'avis
 PAGE_SIZE = 15
 total_rows = len(filtered_df)
 total_pages = max(1, -(-total_rows // PAGE_SIZE))
@@ -607,7 +607,7 @@ for _, row in page_df.iterrows():
             db.update_avis(id_demande, "En attente")
             st.rerun()
 
-# ── Pagination bas de tableau ─────────────────────────────────────────────────
+# Pagination bas de tableau
 col_prev, col_info, col_next = st.columns([1, 2, 1])
 with col_prev:
     if st.button("← Précédent", disabled=(page <= 1), use_container_width=True):
@@ -627,7 +627,7 @@ with col_next:
 
 st.markdown("<div style='height:0.5rem'></div>", unsafe_allow_html=True)
 
-# ── Gestion des décisions ────────────────────────────────────────────────────
+# Gestion des décisions
 @st.fragment
 def render_decisions():
     st.markdown("""
@@ -794,7 +794,7 @@ render_decisions()
 
 st.markdown("<div style='height:0.5rem'></div>", unsafe_allow_html=True)
 
-# ── Export ────────────────────────────────────────────────────────────────────
+# Export
 st.markdown("""
 <div class="section-header">
     <span class="ms">download</span>
@@ -820,7 +820,7 @@ with col_exp2:
             use_container_width=True,
         )
 
-# ── Sticky header via JS ──────────────────────────────────────────────────────
+# Sticky header via JS
 _sticky_bg = COLORS["bg_page"]
 _sticky_border = COLORS["border"]
 _sticky_shadow = COLORS["shadow"]
@@ -893,7 +893,7 @@ components.html(f"""
 </script>
 """, height=0)
 
-# ── Sidebar ──────────────────────────────────────────────────────────────────
+# Sidebar
 with st.sidebar:
     st.markdown(f"""
     <div style="display:flex; align-items:center; gap:8px; margin-bottom:1rem;">
