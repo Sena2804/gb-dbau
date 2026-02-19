@@ -18,7 +18,9 @@ st.set_page_config(
 NIVEAU_ORDER = ["Licence", "Master", "Doctorat", "Spécialisation"]
 
 # ── Mode clair / sombre ──────────────────────────────────────────────────────
-light = st.session_state.get("light_mode", False)
+if "_theme" not in st.session_state:
+    st.session_state["_theme"] = "dark"
+light = st.session_state["_theme"] == "light"
 
 COLORS = {
     "bg_page":       "#ffffff"              if light else "#0e1117",
@@ -85,9 +87,20 @@ st.markdown(f"""
         transition: border-color 0.2s;
     }}
     .kpi-card:hover {{ border-color: var(--accent); }}
-    .kpi-card .kpi-icon {{ font-size: 22px; margin-bottom: 4px; }}
-    .kpi-card .kpi-value {{ font-size: 2rem; font-weight: 700; margin: 2px 0; }}
+    .kpi-card .kpi-icon {{ font-size: 22px; margin-bottom: 4px; color: var(--text-primary); }}
+    .kpi-card .kpi-value {{ font-size: 2rem; font-weight: 700; margin: 2px 0; color: var(--text-primary); }}
     .kpi-card .kpi-label {{ font-size: 0.82rem; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.5px; }}
+    .kpi-card.kpi-green .kpi-icon, .kpi-card.kpi-green .kpi-value {{ color: #3fb950 !important; }}
+    .kpi-card.kpi-red .kpi-icon, .kpi-card.kpi-red .kpi-value {{ color: #f85149 !important; }}
+    .kpi-card.kpi-muted .kpi-icon, .kpi-card.kpi-muted .kpi-value {{ color: var(--text-muted) !important; }}
+
+    /* --- Number badges --- */
+    .num-badge {{
+        display: inline-flex; align-items: center; justify-content: center;
+        min-width: 28px; padding: 2px 8px; border-radius: 8px;
+        font-size: 0.85rem; font-weight: 700;
+        background: var(--accent); color: #ffffff;
+    }}
 
     /* --- Status badges --- */
     .badge {{
@@ -252,6 +265,14 @@ st.markdown(f"""
         color: #24292f !important;
         border-color: #d0d7de !important;
     }
+    [data-testid="stTextInput"] input::placeholder {
+        color: #8c959f !important;
+        opacity: 1 !important;
+    }
+    [data-baseweb="select"] input::placeholder {
+        color: #8c959f !important;
+        opacity: 1 !important;
+    }
     /* Selectbox & multiselect */
     [data-baseweb="select"] {
         background-color: #ffffff !important;
@@ -299,6 +320,24 @@ st.markdown(f"""
         background-color: #f6f8fa !important;
         color: #24292f !important;
     }
+    .stAlertContainer {
+        background-color: rgba(61,157,243,0.1) !important;
+        color: #0969da !important;
+    }
+    .stAlertContainer div { color: inherit !important; }
+    .stAlertContainer p { color: #24292f !important; }
+    /* Success (Favorable) */
+    .stAlertContainer[class*="st-bb"],
+    div[data-testid="stAlert"]:has(.stAlertContainer[class*="st-bb"]) .stAlertContainer {
+        background-color: rgba(22,128,57,0.1) !important;
+        color: #1a7f37 !important;
+    }
+    /* Error (Défavorable) */
+    .stAlertContainer[class*="st-bc"],
+    div[data-testid="stAlert"]:has(.stAlertContainer[class*="st-bc"]) .stAlertContainer {
+        background-color: rgba(207,34,46,0.1) !important;
+        color: #cf222e !important;
+    }
 
     /* --- File uploader --- */
     [data-testid="stFileUploader"] {
@@ -314,11 +353,22 @@ st.markdown(f"""
     .badge-defavorable, .badge-defavorable .ms { color: #f85149 !important; }
     .badge-attente, .badge-attente .ms { color: #8b949e !important; }
     .quota-full .quota-text { color: #f85149 !important; }
-    .kpi-card .kpi-icon, .kpi-card .kpi-value { color: inherit !important; }
+    .kpi-card.kpi-green .kpi-icon, .kpi-card.kpi-green .kpi-icon .ms,
+    .kpi-card.kpi-green .kpi-value { color: #3fb950 !important; }
+    .kpi-card.kpi-red .kpi-icon, .kpi-card.kpi-red .kpi-icon .ms,
+    .kpi-card.kpi-red .kpi-value { color: #f85149 !important; }
+    .kpi-card.kpi-muted .kpi-icon, .kpi-card.kpi-muted .kpi-icon .ms,
+    .kpi-card.kpi-muted .kpi-value { color: #57606a !important; }
+    .num-badge { color: #ffffff !important; background: #0969da !important; }
     .alert-quota, .alert-quota .ms { color: #f85149 !important; }
     .niveau-label { color: var(--accent) !important; }
     .section-header .ms { color: var(--accent) !important; }
     .app-title .ms { color: var(--accent) !important; }
+    #sticky-clone span { color: #24292f !important; }
+    #sticky-clone > div:first-child .ms { color: #0969da !important; }
+    #sticky-clone .kpi-green .kpi-icon .ms, #sticky-clone .kpi-green .kpi-value { color: #3fb950 !important; }
+    #sticky-clone .kpi-red .kpi-icon .ms, #sticky-clone .kpi-red .kpi-value { color: #f85149 !important; }
+    #sticky-clone .kpi-muted .kpi-icon .ms, #sticky-clone .kpi-muted .kpi-value { color: #57606a !important; }
     """}
 </style>
 """, unsafe_allow_html=True)
@@ -387,18 +437,18 @@ favorables_count = db.get_favorables_count()
 # ── KPIs ─────────────────────────────────────────────────────────────────────
 stats = db.get_stats()
 kpis = [
-    ("groups", stats["total"], "Total", COLORS["text_primary"]),
-    ("task_alt", stats["traites"], "Traitées", COLORS["text_primary"]),
-    ("check_circle", stats["favorables"], "Favorables", "#3fb950"),
-    ("cancel", stats["defavorables"], "Défavorables", "#f85149"),
-    ("pending", stats["restants"], "Restantes", COLORS["text_muted"]),
+    ("groups", stats["total"], "Total", ""),
+    ("task_alt", stats["traites"], "Traitées", ""),
+    ("check_circle", stats["favorables"], "Favorables", "kpi-green"),
+    ("cancel", stats["defavorables"], "Défavorables", "kpi-red"),
+    ("pending", stats["restants"], "Restantes", "kpi-muted"),
 ]
 kpi_html = '<div class="kpi-row" id="kpi-row">'
-for ic, val, label, color in kpis:
+for ic, val, label, cls in kpis:
     kpi_html += f"""
-    <div class="kpi-card">
-        <div class="kpi-icon" style="color:{color}">{icon(ic)}</div>
-        <div class="kpi-value" style="color:{color}">{val}</div>
+    <div class="kpi-card {cls}">
+        <div class="kpi-icon">{icon(ic)}</div>
+        <div class="kpi-value">{val}</div>
         <div class="kpi-label">{label}</div>
     </div>"""
 kpi_html += '</div>'
@@ -521,18 +571,17 @@ st.divider()
 fav_counts_local = db.get_favorables_count()
 for _, row in page_df.iterrows():
     cols = st.columns([0.5, 2.5, 2, 1, 1.5, 0.3, 2])
-    cols[0].write(row.get("numero", row.get("id_demande", "")))
+    _num = row.get("numero", row.get("id_demande", ""))
+    cols[0].markdown(
+        f'<span class="num-badge">{_num}</span>',
+        unsafe_allow_html=True,
+    )
     cols[1].write(row["name"])
     cols[2].write(row["filiere"])
     cols[3].write(row["niveau_etudes"])
 
     avis = row["avis"]
-    if avis == "Favorable":
-        cols[4].success("Favorable")
-    elif avis == "Défavorable":
-        cols[4].error("Défavorable")
-    else:
-        cols[4].info("En attente")
+    cols[4].markdown(render_status(avis), unsafe_allow_html=True)
 
     id_demande = row["id_demande"]
     key_quota = (row["niveau_etudes"], row["filiere"])
@@ -718,7 +767,7 @@ def render_decisions():
                 type="primary",
             ):
                 db.update_avis(candidat["id_demande"], "Favorable")
-                st.rerun()
+                st.rerun(scope="app")
 
         with btn_col2:
             if st.button(
@@ -727,12 +776,12 @@ def render_decisions():
                 use_container_width=True,
             ):
                 db.update_avis(candidat["id_demande"], "Défavorable")
-                st.rerun()
+                st.rerun(scope="app")
 
         if candidat["avis"] != "En attente":
             if st.button("Remettre en attente", key=f"reset_{candidat['id_demande']}", use_container_width=True):
                 db.update_avis(candidat["id_demande"], "En attente")
-                st.rerun()
+                st.rerun(scope="app")
 
 
 render_decisions()
@@ -778,13 +827,17 @@ components.html(f"""
     const doc = window.parent.document;
     const titleEl = doc.querySelector('.app-title');
     const kpiEl = doc.querySelector('#kpi-row');
-    if (!titleEl || !kpiEl || doc.getElementById('sticky-clone')) return;
+    if (!titleEl || !kpiEl) return;
+
+    // Supprimer l'ancien clone pour le recréer avec les bonnes couleurs
+    const existing = doc.getElementById('sticky-clone');
+    if (existing) existing.remove();
 
     // Créer le header fixe
     const header = doc.createElement('div');
     header.id = 'sticky-clone';
     header.style.cssText = `
-        position: fixed; top: 0; left: 0; right: 0; z-index: 999;
+        position: fixed; top: 0; left: 0; right: 0; z-index: 9999999;
         background: {_sticky_bg}; padding: 0.8rem 2rem 0.5rem 2rem;
         border-bottom: 1px solid {_sticky_border};
         box-shadow: 0 2px 8px {_sticky_shadow};
@@ -805,7 +858,8 @@ components.html(f"""
         v.style.fontSize = '1.2rem';
     }});
     header.appendChild(kpiClone);
-    doc.body.appendChild(header);
+    const stApp = doc.querySelector('[data-testid="stApp"]') || doc.body;
+    stApp.appendChild(header);
 
     // Observer le scroll
     const scrollContainer = doc.querySelector('[data-testid="stMainBlockContainer"]')
@@ -842,7 +896,10 @@ with st.sidebar:
     </div>
     """, unsafe_allow_html=True)
 
-    st.toggle("Mode clair", key="light_mode", value=light)
+    def _on_theme_toggle():
+        st.session_state["_theme"] = "light" if st.session_state["_theme_toggle"] else "dark"
+
+    st.toggle("Mode clair", key="_theme_toggle", value=light, on_change=_on_theme_toggle)
 
     st.caption("Session en cours")
     stats = db.get_stats()
