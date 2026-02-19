@@ -17,7 +17,7 @@ st.set_page_config(
 
 NIVEAU_ORDER = ["Licence", "Master", "Doctorat", "Spécialisation"]
 
-# ── Mode clair / sombre ──────────────────────────────────────────────────────
+# Mode clair / sombre
 if "_theme" not in st.session_state:
     st.session_state["_theme"] = "dark"
 light = st.session_state["_theme"] == "light"
@@ -34,173 +34,9 @@ COLORS = {
     "shadow":        "rgba(0,0,0,0.1)"     if light else "rgba(0,0,0,0.3)",
 }
 
-# ── Icônes Material Symbols + CSS global ─────────────────────────────────────
-st.markdown(f"""
-<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Rounded:opsz,wght,FILL,GRAD@24,400,1,0" rel="stylesheet">
-<style>
-    /* --- Theme variables (driven by Python toggle) --- */
-    :root {{
-        --bg-page: {COLORS["bg_page"]};
-        --bg-card: {COLORS["bg_card"]};
-        --bg-dark: {COLORS["bg_dark"]};
-        --text-primary: {COLORS["text_primary"]};
-        --text-muted: {COLORS["text_muted"]};
-        --accent: {COLORS["accent"]};
-        --border: {COLORS["border"]};
-        --border-subtle: {COLORS["border_subtle"]};
-        --shadow: {COLORS["shadow"]};
-    }}
-
-    /* --- Reset & base --- */
-    .block-container {{ padding-top: 1.5rem; max-width: 1200px; }}
-
-    .ms {{ font-family: 'Material Symbols Rounded'; font-size: 20px;
-           vertical-align: middle; margin-right: 6px; font-weight: normal;
-           font-style: normal; display: inline-block; line-height: 1;
-           text-transform: none; letter-spacing: normal; word-wrap: normal;
-           white-space: nowrap; direction: ltr;
-           -webkit-font-smoothing: antialiased; }}
-
-    /* --- Section headers --- */
-    .section-header {{
-        display: flex; align-items: center; gap: 10px;
-        margin-bottom: 0.8rem; margin-top: 0.5rem;
-    }}
-    .section-header .ms {{ font-size: 26px; color: var(--accent); }}
-    .section-header h3 {{ margin: 0; font-size: 1.3rem; font-weight: 600; color: var(--text-primary); }}
-
-    /* --- Page title --- */
-    .app-title {{
-        display: flex; align-items: center; gap: 14px;
-        padding-bottom: 1rem; border-bottom: 1px solid var(--border-subtle);
-        margin-bottom: 1.2rem;
-    }}
-    .app-title .ms {{ font-size: 36px; color: var(--accent); }}
-    .app-title h1 {{ margin: 0; font-size: 1.8rem; font-weight: 700; color: var(--text-primary); }}
-    .app-title span.sub {{ font-size: 0.95rem; color: var(--text-muted); font-weight: 400; display: block; }}
-
-    /* --- KPI cards --- */
-    .kpi-row {{ display: flex; gap: 12px; margin-bottom: 0.5rem; }}
-    .kpi-card {{
-        flex: 1; background: var(--bg-card); border-radius: 12px; padding: 1.1rem 1rem;
-        text-align: center; border: 1px solid var(--border);
-        transition: border-color 0.2s;
-    }}
-    .kpi-card:hover {{ border-color: var(--accent); }}
-    .kpi-card .kpi-icon {{ font-size: 22px; margin-bottom: 4px; color: var(--text-primary); }}
-    .kpi-card .kpi-value {{ font-size: 2rem; font-weight: 700; margin: 2px 0; color: var(--text-primary); }}
-    .kpi-card .kpi-label {{ font-size: 0.82rem; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.5px; }}
-    .kpi-card.kpi-green .kpi-icon, .kpi-card.kpi-green .kpi-value {{ color: #3fb950 !important; }}
-    .kpi-card.kpi-red .kpi-icon, .kpi-card.kpi-red .kpi-value {{ color: #f85149 !important; }}
-    .kpi-card.kpi-muted .kpi-icon, .kpi-card.kpi-muted .kpi-value {{ color: var(--text-muted) !important; }}
-
-    /* --- Number badges --- */
-    .num-badge {{
-        display: inline-flex; align-items: center; justify-content: center;
-        min-width: 28px; padding: 2px 8px; border-radius: 8px;
-        font-size: 0.85rem; font-weight: 700;
-        background: var(--accent); color: #ffffff;
-    }}
-
-    /* --- Status badges --- */
-    .badge {{
-        display: inline-flex; align-items: center; gap: 4px;
-        padding: 4px 12px; border-radius: 20px; font-size: 0.85rem; font-weight: 600;
-    }}
-    .badge .ms {{ font-size: 16px; margin-right: 2px; }}
-    .badge-favorable {{ background: rgba(63,185,80,0.15); color: #3fb950; border: 1px solid rgba(63,185,80,0.3); }}
-    .badge-defavorable {{ background: rgba(248,81,73,0.15); color: #f85149; border: 1px solid rgba(248,81,73,0.3); }}
-    .badge-attente {{ background: rgba(139,148,158,0.15); color: var(--text-muted); border: 1px solid rgba(139,148,158,0.3); }}
-
-    /* --- Quota cards --- */
-    .quota-grid {{ display: flex; gap: 10px; flex-wrap: wrap; margin-bottom: 0.8rem; }}
-    .quota-card {{
-        flex: 1; min-width: 160px; border-radius: 10px; padding: 0.75rem 1rem;
-        border: 1px solid var(--border); background: var(--bg-card);
-    }}
-    .quota-card .quota-filiere {{ font-weight: 600; font-size: 0.9rem; color: var(--text-primary); margin-bottom: 4px; }}
-    .quota-card .quota-bar {{ height: 6px; border-radius: 3px; background: var(--bg-dark); margin: 6px 0; overflow: hidden; }}
-    .quota-card .quota-bar-fill {{ height: 100%; border-radius: 3px; transition: width 0.3s; }}
-    .quota-card .quota-text {{ font-size: 0.8rem; color: var(--text-muted); }}
-    .quota-ok {{ border-color: rgba(63,185,80,0.3); }}
-    .quota-ok .quota-bar-fill {{ background: #3fb950; }}
-    .quota-full {{ border-color: rgba(248,81,73,0.4); }}
-    .quota-full .quota-bar-fill {{ background: #f85149; }}
-    .quota-full .quota-text {{ color: #f85149; }}
-
-    /* --- Candidat info card --- */
-    .candidat-card {{
-        background: var(--bg-card); border: 1px solid var(--border); border-radius: 12px;
-        padding: 1.2rem; margin-bottom: 1rem;
-    }}
-    .candidat-card table {{ width: 100%; border-collapse: collapse; }}
-    .candidat-card td {{ padding: 6px 8px; font-size: 0.95rem; color: var(--text-primary); border: none; }}
-    .candidat-card td:first-child {{ color: var(--text-muted); font-weight: 500; width: 120px; }}
-
-    /* --- Niveau label --- */
-    .niveau-label {{
-        font-size: 0.85rem; font-weight: 600; color: var(--accent);
-        text-transform: uppercase; letter-spacing: 0.8px;
-        margin-bottom: 6px; margin-top: 8px;
-    }}
-
-    /* --- Alert quota --- */
-    .alert-quota {{
-        display: flex; align-items: center; gap: 8px;
-        background: rgba(248,81,73,0.1); border: 1px solid rgba(248,81,73,0.3);
-        border-radius: 8px; padding: 10px 14px; color: #f85149; font-size: 0.9rem;
-    }}
-    .alert-quota .ms {{ font-size: 20px; }}
-
-    /* --- Hide default Streamlit header/footer --- */
-    header[data-testid="stHeader"] {{ background: transparent; }}
-    .stDeployButton {{ display: none; }}
-    div[data-testid="stDataFrame"] {{ font-size: 1rem; }}
-
-    /* --- Sticky header (appliqué via JS) --- */
-    .sticky-header {{
-        position: fixed !important;
-        top: 0;
-        left: 0;
-        right: 0;
-        z-index: 999;
-        background: var(--bg-page);
-        padding: 1rem 2rem 0.5rem 2rem;
-        border-bottom: 1px solid var(--border);
-        box-shadow: 0 2px 8px var(--shadow);
-    }}
-    .sticky-header .app-title h1 {{ font-size: 1.3rem; }}
-    .sticky-header .app-title .sub {{ display: none; }}
-    .sticky-header .kpi-row {{ margin-bottom: 0; }}
-    .sticky-header .kpi-card {{ padding: 0.5rem 0.6rem; }}
-    .sticky-header .kpi-value {{ font-size: 1.3rem; }}
-
-    /* --- Action buttons: green / red / yellow by position in 3-col block --- */
-    div[data-testid="stColumn"]:last-child div[data-testid="stHorizontalBlock"] > div[data-testid="stColumn"]:nth-child(1) button:not(:disabled) span[data-testid="stIconMaterial"] {{
-        color: #3fb950 !important;
-    }}
-    div[data-testid="stColumn"]:last-child div[data-testid="stHorizontalBlock"] > div[data-testid="stColumn"]:nth-child(2) button:not(:disabled) span[data-testid="stIconMaterial"] {{
-        color: #f85149 !important;
-    }}
-    div[data-testid="stColumn"]:last-child div[data-testid="stHorizontalBlock"] > div[data-testid="stColumn"]:nth-child(3) button:not(:disabled) span[data-testid="stIconMaterial"] {{
-        color: #d29922 !important;
-    }}
-    /* --- Boutons désactivés : grisés --- */
-    button:disabled {{
-        opacity: 0.25 !important;
-    }}
-    /* --- Réduire l'espacement entre boutons d'action --- */
-    div[data-testid="stColumn"]:last-child div[data-testid="stHorizontalBlock"] {{
-        gap: 0.25rem !important;
-    }}
-    div[data-testid="stColumn"]:last-child div[data-testid="stHorizontalBlock"] > div[data-testid="stColumn"] {{
-        padding: 0 !important;
-    }}
-
-    /* --- Sidebar --- */
-    section[data-testid="stSidebar"] .stMarkdown h3 {{ font-size: 1.1rem; }}
-
-    {"" if not light else '''
+def build_css(colors: dict, light: bool) -> str:
+    """Retourne le bloc HTML <link> + <style> complet pour le thème courant."""
+    light_overrides = '''
     /* --- Streamlit native overrides for light mode --- */
     [data-testid="stApp"] {
         background-color: #ffffff !important;
@@ -375,11 +211,181 @@ st.markdown(f"""
     #sticky-clone .kpi-green .kpi-icon .ms, #sticky-clone .kpi-green .kpi-value { color: #3fb950 !important; }
     #sticky-clone .kpi-red .kpi-icon .ms, #sticky-clone .kpi-red .kpi-value { color: #f85149 !important; }
     #sticky-clone .kpi-muted .kpi-icon .ms, #sticky-clone .kpi-muted .kpi-value { color: #57606a !important; }
-    '''}
-</style>
-""", unsafe_allow_html=True)
+    ''' if light else ''
 
-# ── Titre (rendu normalement, le sticky sera appliqué via JS) ────────────────
+    return f"""
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Rounded:opsz,wght,FILL,GRAD@24,400,1,0" rel="stylesheet">
+<style>
+    /* --- Theme variables (driven by Python toggle) --- */
+    :root {{
+        --bg-page: {colors["bg_page"]};
+        --bg-card: {colors["bg_card"]};
+        --bg-dark: {colors["bg_dark"]};
+        --text-primary: {colors["text_primary"]};
+        --text-muted: {colors["text_muted"]};
+        --accent: {colors["accent"]};
+        --border: {colors["border"]};
+        --border-subtle: {colors["border_subtle"]};
+        --shadow: {colors["shadow"]};
+    }}
+
+    /* --- Reset & base --- */
+    .block-container {{ padding-top: 1.5rem; max-width: 1200px; }}
+
+    .ms {{ font-family: 'Material Symbols Rounded'; font-size: 20px;
+           vertical-align: middle; margin-right: 6px; font-weight: normal;
+           font-style: normal; display: inline-block; line-height: 1;
+           text-transform: none; letter-spacing: normal; word-wrap: normal;
+           white-space: nowrap; direction: ltr;
+           -webkit-font-smoothing: antialiased; }}
+
+    /* --- Section headers --- */
+    .section-header {{
+        display: flex; align-items: center; gap: 10px;
+        margin-bottom: 0.8rem; margin-top: 0.5rem;
+    }}
+    .section-header .ms {{ font-size: 26px; color: var(--accent); }}
+    .section-header h3 {{ margin: 0; font-size: 1.3rem; font-weight: 600; color: var(--text-primary); }}
+
+    /* --- Page title --- */
+    .app-title {{
+        display: flex; align-items: center; gap: 14px;
+        padding-bottom: 1rem; border-bottom: 1px solid var(--border-subtle);
+        margin-bottom: 1.2rem;
+    }}
+    .app-title .ms {{ font-size: 36px; color: var(--accent); }}
+    .app-title h1 {{ margin: 0; font-size: 1.8rem; font-weight: 700; color: var(--text-primary); }}
+    .app-title span.sub {{ font-size: 0.95rem; color: var(--text-muted); font-weight: 400; display: block; }}
+
+    /* --- KPI cards --- */
+    .kpi-row {{ display: flex; gap: 12px; margin-bottom: 0.5rem; }}
+    .kpi-card {{
+        flex: 1; background: var(--bg-card); border-radius: 12px; padding: 1.1rem 1rem;
+        text-align: center; border: 1px solid var(--border);
+        transition: border-color 0.2s;
+    }}
+    .kpi-card:hover {{ border-color: var(--accent); }}
+    .kpi-card .kpi-icon {{ font-size: 22px; margin-bottom: 4px; color: var(--text-primary); }}
+    .kpi-card .kpi-value {{ font-size: 2rem; font-weight: 700; margin: 2px 0; color: var(--text-primary); }}
+    .kpi-card .kpi-label {{ font-size: 0.82rem; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.5px; }}
+    .kpi-card.kpi-green .kpi-icon, .kpi-card.kpi-green .kpi-value {{ color: #3fb950 !important; }}
+    .kpi-card.kpi-red .kpi-icon, .kpi-card.kpi-red .kpi-value {{ color: #f85149 !important; }}
+    .kpi-card.kpi-muted .kpi-icon, .kpi-card.kpi-muted .kpi-value {{ color: var(--text-muted) !important; }}
+
+    /* --- Number badges --- */
+    .num-badge {{
+        display: inline-flex; align-items: center; justify-content: center;
+        min-width: 28px; padding: 2px 8px; border-radius: 8px;
+        font-size: 0.85rem; font-weight: 700;
+        background: var(--accent); color: #ffffff;
+    }}
+
+    /* --- Status badges --- */
+    .badge {{
+        display: inline-flex; align-items: center; gap: 4px;
+        padding: 4px 12px; border-radius: 20px; font-size: 0.85rem; font-weight: 600;
+    }}
+    .badge .ms {{ font-size: 16px; margin-right: 2px; }}
+    .badge-favorable {{ background: rgba(63,185,80,0.15); color: #3fb950; border: 1px solid rgba(63,185,80,0.3); }}
+    .badge-defavorable {{ background: rgba(248,81,73,0.15); color: #f85149; border: 1px solid rgba(248,81,73,0.3); }}
+    .badge-attente {{ background: rgba(139,148,158,0.15); color: var(--text-muted); border: 1px solid rgba(139,148,158,0.3); }}
+
+    /* --- Quota cards --- */
+    .quota-grid {{ display: flex; gap: 10px; flex-wrap: wrap; margin-bottom: 0.8rem; }}
+    .quota-card {{
+        flex: 1; min-width: 160px; border-radius: 10px; padding: 0.75rem 1rem;
+        border: 1px solid var(--border); background: var(--bg-card);
+    }}
+    .quota-card .quota-filiere {{ font-weight: 600; font-size: 0.9rem; color: var(--text-primary); margin-bottom: 4px; }}
+    .quota-card .quota-bar {{ height: 6px; border-radius: 3px; background: var(--bg-dark); margin: 6px 0; overflow: hidden; }}
+    .quota-card .quota-bar-fill {{ height: 100%; border-radius: 3px; transition: width 0.3s; }}
+    .quota-card .quota-text {{ font-size: 0.8rem; color: var(--text-muted); }}
+    .quota-ok {{ border-color: rgba(63,185,80,0.3); }}
+    .quota-ok .quota-bar-fill {{ background: #3fb950; }}
+    .quota-full {{ border-color: rgba(248,81,73,0.4); }}
+    .quota-full .quota-bar-fill {{ background: #f85149; }}
+    .quota-full .quota-text {{ color: #f85149; }}
+
+    /* --- Candidat info card --- */
+    .candidat-card {{
+        background: var(--bg-card); border: 1px solid var(--border); border-radius: 12px;
+        padding: 1.2rem; margin-bottom: 1rem;
+    }}
+    .candidat-card table {{ width: 100%; border-collapse: collapse; }}
+    .candidat-card td {{ padding: 6px 8px; font-size: 0.95rem; color: var(--text-primary); border: none; }}
+    .candidat-card td:first-child {{ color: var(--text-muted); font-weight: 500; width: 120px; }}
+
+    /* --- Niveau label --- */
+    .niveau-label {{
+        font-size: 0.85rem; font-weight: 600; color: var(--accent);
+        text-transform: uppercase; letter-spacing: 0.8px;
+        margin-bottom: 6px; margin-top: 8px;
+    }}
+
+    /* --- Alert quota --- */
+    .alert-quota {{
+        display: flex; align-items: center; gap: 8px;
+        background: rgba(248,81,73,0.1); border: 1px solid rgba(248,81,73,0.3);
+        border-radius: 8px; padding: 10px 14px; color: #f85149; font-size: 0.9rem;
+    }}
+    .alert-quota .ms {{ font-size: 20px; }}
+
+    /* --- Hide default Streamlit header/footer --- */
+    header[data-testid="stHeader"] {{ background: transparent; }}
+    .stDeployButton {{ display: none; }}
+    div[data-testid="stDataFrame"] {{ font-size: 1rem; }}
+
+    /* --- Sticky header (appliqué via JS) --- */
+    .sticky-header {{
+        position: fixed !important;
+        top: 0;
+        left: 0;
+        right: 0;
+        z-index: 999;
+        background: var(--bg-page);
+        padding: 1rem 2rem 0.5rem 2rem;
+        border-bottom: 1px solid var(--border);
+        box-shadow: 0 2px 8px var(--shadow);
+    }}
+    .sticky-header .app-title h1 {{ font-size: 1.3rem; }}
+    .sticky-header .app-title .sub {{ display: none; }}
+    .sticky-header .kpi-row {{ margin-bottom: 0; }}
+    .sticky-header .kpi-card {{ padding: 0.5rem 0.6rem; }}
+    .sticky-header .kpi-value {{ font-size: 1.3rem; }}
+
+    /* --- Action buttons: green / red / yellow by position in 3-col block --- */
+    div[data-testid="stColumn"]:last-child div[data-testid="stHorizontalBlock"] > div[data-testid="stColumn"]:nth-child(1) button:not(:disabled) span[data-testid="stIconMaterial"] {{
+        color: #3fb950 !important;
+    }}
+    div[data-testid="stColumn"]:last-child div[data-testid="stHorizontalBlock"] > div[data-testid="stColumn"]:nth-child(2) button:not(:disabled) span[data-testid="stIconMaterial"] {{
+        color: #f85149 !important;
+    }}
+    div[data-testid="stColumn"]:last-child div[data-testid="stHorizontalBlock"] > div[data-testid="stColumn"]:nth-child(3) button:not(:disabled) span[data-testid="stIconMaterial"] {{
+        color: #d29922 !important;
+    }}
+    /* --- Boutons désactivés : grisés --- */
+    button:disabled {{
+        opacity: 0.25 !important;
+    }}
+    /* --- Réduire l'espacement entre boutons d'action --- */
+    div[data-testid="stColumn"]:last-child div[data-testid="stHorizontalBlock"] {{
+        gap: 0.25rem !important;
+    }}
+    div[data-testid="stColumn"]:last-child div[data-testid="stHorizontalBlock"] > div[data-testid="stColumn"] {{
+        padding: 0 !important;
+    }}
+
+    /* --- Sidebar --- */
+    section[data-testid="stSidebar"] .stMarkdown h3 {{ font-size: 1.1rem; }}
+
+    {light_overrides}
+</style>
+"""
+
+
+st.markdown(build_css(COLORS, light), unsafe_allow_html=True)
+
+# Titre (rendu normalement, le sticky sera appliqué via JS)
 st.markdown("""
 <div class="app-title">
     <span class="ms" style="font-size:36px">school</span>
@@ -390,7 +396,7 @@ st.markdown("""
 </div>
 """, unsafe_allow_html=True)
 
-# ── Initialisation ───────────────────────────────────────────────────────────
+# Initialisation
 db.init_db()
 
 if not db.is_db_loaded():
@@ -421,7 +427,7 @@ if not db.is_db_loaded():
     st.stop()
 
 
-# ── Fonctions utilitaires ────────────────────────────────────────────────────
+# Fonctions utilitaires
 def render_status(avis: str) -> str:
     if avis == "Favorable":
         return '<span class="badge badge-favorable"><span class="ms">check_circle</span>Favorable</span>'
@@ -434,13 +440,13 @@ def icon(name: str) -> str:
     return f'<span class="ms">{name}</span>'
 
 
-# ── Données globales ─────────────────────────────────────────────────────────
+# Données globales
 all_df = db.get_all_candidatures()
 quotas = db.get_quotas()
 favorables_count = db.get_favorables_count()
 
 
-# ── KPIs ─────────────────────────────────────────────────────────────────────
+# KPIs
 stats = db.get_stats()
 kpis = [
     ("groups", stats["total"], "Total", ""),
@@ -460,7 +466,7 @@ for ic, val, label, cls in kpis:
 kpi_html += '</div>'
 st.markdown(kpi_html, unsafe_allow_html=True)
 
-# ── Quotas par filière ───────────────────────────────────────────────────────
+# Quotas par filière
 @st.fragment
 def render_quotas():
     fav = db.get_favorables_count()
@@ -497,7 +503,7 @@ render_quotas()
 
 st.markdown("<div style='height:1rem'></div>", unsafe_allow_html=True)
 
-# ── Filtres ──────────────────────────────────────────────────────────────────
+# Filtres
 st.markdown("""
 <div class="section-header">
     <span class="ms">filter_list</span>
@@ -528,14 +534,14 @@ if filtre_avis:
 
 filtered_df = filtered_df.copy()
 
-# ── KPIs filtrés ─────────────────────────────────────────────────────────────
+# KPIs filtrés
 if len(filtered_df) < len(all_df):
     f_total = len(filtered_df)
     f_fav = len(filtered_df[filtered_df["avis"] == "Favorable"])
     f_def = len(filtered_df[filtered_df["avis"] == "Défavorable"])
     st.caption(f"Filtre actif : {f_total} candidatures | {f_fav} favorables | {f_def} défavorables | {f_total - f_fav - f_def} en attente")
 
-# ── Tableau des candidatures ─────────────────────────────────────────────────
+# Tableau des candidatures
 st.markdown("""
 <div class="section-header">
     <span class="ms">list_alt</span>
@@ -552,7 +558,7 @@ else:
     sort_cols.append("name")
 filtered_df = filtered_df.sort_values(sort_cols).drop(columns=["niveau_order"])
 
-# ── Tableau paginé avec boutons d'avis ───────────────────────────────────────
+# Tableau paginé avec boutons d'avis
 PAGE_SIZE = 15
 total_rows = len(filtered_df)
 total_pages = max(1, -(-total_rows // PAGE_SIZE))
@@ -607,7 +613,7 @@ for _, row in page_df.iterrows():
             db.update_avis(id_demande, "En attente")
             st.rerun()
 
-# ── Pagination bas de tableau ─────────────────────────────────────────────────
+# Pagination bas de tableau
 col_prev, col_info, col_next = st.columns([1, 2, 1])
 with col_prev:
     if st.button("← Précédent", disabled=(page <= 1), use_container_width=True):
@@ -627,7 +633,7 @@ with col_next:
 
 st.markdown("<div style='height:0.5rem'></div>", unsafe_allow_html=True)
 
-# ── Gestion des décisions ────────────────────────────────────────────────────
+# Gestion des décisions
 @st.fragment
 def render_decisions():
     st.markdown("""
@@ -794,7 +800,7 @@ render_decisions()
 
 st.markdown("<div style='height:0.5rem'></div>", unsafe_allow_html=True)
 
-# ── Export ────────────────────────────────────────────────────────────────────
+# Export
 st.markdown("""
 <div class="section-header">
     <span class="ms">download</span>
@@ -820,7 +826,7 @@ with col_exp2:
             use_container_width=True,
         )
 
-# ── Sticky header via JS ──────────────────────────────────────────────────────
+# Sticky header via JS
 _sticky_bg = COLORS["bg_page"]
 _sticky_border = COLORS["border"]
 _sticky_shadow = COLORS["shadow"]
@@ -889,11 +895,29 @@ components.html(f"""
     }}
     window.parent.addEventListener('scroll', checkScroll, true);
     checkScroll();
+
+    // Observer les changements du KPI row pour mettre à jour le clone
+    const observer = new MutationObserver(() => {{
+        const freshKpi = doc.querySelector('#kpi-row');
+        if (!freshKpi) return;
+        const oldClone = header.querySelector('.kpi-row');
+        if (oldClone) oldClone.remove();
+        const newClone = freshKpi.cloneNode(true);
+        newClone.removeAttribute('id');
+        newClone.querySelectorAll('.kpi-card').forEach(c => {{
+            c.style.padding = '0.4rem 0.5rem';
+        }});
+        newClone.querySelectorAll('.kpi-value').forEach(v => {{
+            v.style.fontSize = '1.2rem';
+        }});
+        header.appendChild(newClone);
+    }});
+    observer.observe(kpiEl, {{ childList: true, subtree: true, characterData: true }});
 }})();
 </script>
 """, height=0)
 
-# ── Sidebar ──────────────────────────────────────────────────────────────────
+# Sidebar
 with st.sidebar:
     st.markdown(f"""
     <div style="display:flex; align-items:center; gap:8px; margin-bottom:1rem;">
