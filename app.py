@@ -767,7 +767,7 @@ def render_decisions():
             favorable_disabled = quota_atteint and candidat["avis"] != "Favorable"
             if st.button(
                 "Favorable",
-                key=f"fav_{candidat['id_demande']}",
+                key=f"search_fav_{candidat['id_demande']}",
                 disabled=favorable_disabled,
                 use_container_width=True,
                 type="primary",
@@ -778,14 +778,14 @@ def render_decisions():
         with btn_col2:
             if st.button(
                 "Défavorable",
-                key=f"def_{candidat['id_demande']}",
+                key=f"search_def_{candidat['id_demande']}",
                 use_container_width=True,
             ):
                 db.update_avis(candidat["id_demande"], "Défavorable")
                 st.rerun(scope="app")
 
         if candidat["avis"] != "En attente":
-            if st.button("Remettre en attente", key=f"reset_{candidat['id_demande']}", use_container_width=True):
+            if st.button("Remettre en attente", key=f"search_reset_{candidat['id_demande']}", use_container_width=True):
                 db.update_avis(candidat["id_demande"], "En attente")
                 st.rerun(scope="app")
 
