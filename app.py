@@ -288,6 +288,9 @@ st.markdown(f"""
     [data-baseweb="select"] svg {
         fill: #57606a !important;
     }
+    [data-baseweb="select"] div {
+        color: #24292f !important;
+    }
     /* Dropdown menu */
     [data-baseweb="popover"] {
         background-color: #ffffff !important;
@@ -308,10 +311,13 @@ st.markdown(f"""
     }
 
     /* --- Progress bar --- */
-    [data-testid="stProgress"] [role="progressbar"] div {
-        background-color: #e1e4e8 !important;
+    [data-testid="stProgress"] [role="progressbar"] > div {
+        background-color: #d0d7de !important;
     }
-    [data-testid="stProgress"] [role="progressbar"] div div {
+    [data-testid="stProgress"] [role="progressbar"] > div > div {
+        background-color: transparent !important;
+    }
+    [data-testid="stProgress"] [role="progressbar"] > div > div > div {
         background-color: #0969da !important;
     }
 
