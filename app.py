@@ -19,7 +19,7 @@ NIVEAU_ORDER = ["Licence", "Master", "Doctorat", "Spécialisation"]
 
 # Mode clair / sombre
 if "_theme" not in st.session_state:
-    st.session_state["_theme"] = "dark"
+    st.session_state["_theme"] = "light"
 light = st.session_state["_theme"] == "light"
 
 COLORS = {
@@ -145,6 +145,17 @@ def build_css(colors: dict, light: bool) -> str:
         background-color: #e1e4e8 !important;
         color: #24292f !important;
     }
+    /* Tooltips */
+    [role="tooltip"],
+    [role="tooltip"] > div,
+    [role="tooltip"] div,
+    [role="tooltip"] span,
+    [role="tooltip"] p,
+    [data-testid="stTooltipContent"],
+    .stTooltipContent {
+        background-color: #24292f !important;
+        color: #ffffff !important;
+    }
 
     /* --- Progress bar --- */
     [data-testid="stProgress"] [role="progressbar"] > div {
@@ -189,12 +200,20 @@ def build_css(colors: dict, light: bool) -> str:
         background-color: #f6f8fa !important;
         border-color: #d0d7de !important;
     }
+    [data-testid="stFileUploader"] small,
+    [data-testid="stFileUploader"] span,
+    [data-testid="stFileUploader"] div {
+        color: #24292f !important;
+    }
+    [data-testid="stFileUploader"] button svg {
+        fill: #57606a !important;
+    }
 
     /* Restore semantic colors that the blanket rule above would override */
     .badge-favorable, .badge-favorable .ms { color: #3fb950 !important; }
     .badge-defavorable, .badge-defavorable .ms { color: #f85149 !important; }
     .badge-attente, .badge-attente .ms { color: #8b949e !important; }
-    .quota-full .quota-text { color: #f85149 !important; }
+    .quota-full .quota-text { color: #3fb950 !important; }
     .kpi-card.kpi-green .kpi-icon, .kpi-card.kpi-green .kpi-icon .ms,
     .kpi-card.kpi-green .kpi-value { color: #3fb950 !important; }
     .kpi-card.kpi-red .kpi-icon, .kpi-card.kpi-red .kpi-icon .ms,
@@ -300,11 +319,11 @@ def build_css(colors: dict, light: bool) -> str:
     .quota-card .quota-bar {{ height: 6px; border-radius: 3px; background: var(--bg-dark); margin: 6px 0; overflow: hidden; }}
     .quota-card .quota-bar-fill {{ height: 100%; border-radius: 3px; transition: width 0.3s; }}
     .quota-card .quota-text {{ font-size: 0.8rem; color: var(--text-muted); }}
-    .quota-ok {{ border-color: rgba(63,185,80,0.3); }}
-    .quota-ok .quota-bar-fill {{ background: #3fb950; }}
-    .quota-full {{ border-color: rgba(248,81,73,0.4); }}
-    .quota-full .quota-bar-fill {{ background: #f85149; }}
-    .quota-full .quota-text {{ color: #f85149; }}
+    .quota-ok {{ border-color: rgba(9,105,218,0.3); }}
+    .quota-ok .quota-bar-fill {{ background: #0969da; }}
+    .quota-full {{ border-color: rgba(63,185,80,0.4); }}
+    .quota-full .quota-bar-fill {{ background: #3fb950; }}
+    .quota-full .quota-text {{ color: #3fb950; }}
 
     /* --- Candidat info card --- */
     .candidat-card {{
@@ -401,29 +420,17 @@ db.init_db()
 
 if not db.is_db_loaded():
     st.info("Chargez le fichier Excel des candidatures pour commencer.")
-    col_upload, col_mock = st.columns(2)
-    with col_upload:
-        uploaded = st.file_uploader("Fichier Excel des candidatures", type=["xlsx"])
-        if uploaded:
-            with open("_temp_upload.xlsx", "wb") as f:
-                f.write(uploaded.getvalue())
-            n = db.load_excel_to_db("_temp_upload.xlsx")
-            quotas_path = Path("quotas.json")
-            if quotas_path.exists():
-                db.load_quotas(str(quotas_path))
-            Path("_temp_upload.xlsx").unlink(missing_ok=True)
-            st.success(f"{n} candidatures chargées.")
-            st.rerun()
-    with col_mock:
-        if st.button("Charger les données mockées"):
-            mock_path = Path("mock_candidatures.xlsx")
-            if not mock_path.exists():
-                st.error("Lancez d'abord `python generate_mock_data.py`")
-            else:
-                n = db.load_excel_to_db(str(mock_path))
-                db.load_quotas("quotas.json")
-                st.success(f"{n} candidatures mockées chargées.")
-                st.rerun()
+    uploaded = st.file_uploader("Fichier Excel des candidatures", type=["xlsx"])
+    if uploaded:
+        with open("_temp_upload.xlsx", "wb") as f:
+            f.write(uploaded.getvalue())
+        n = db.load_excel_to_db("_temp_upload.xlsx")
+        quotas_path = Path("quotas.json")
+        if quotas_path.exists():
+            db.load_quotas(str(quotas_path))
+        Path("_temp_upload.xlsx").unlink(missing_ok=True)
+        st.success(f"{n} candidatures chargées.")
+        st.rerun()
     st.stop()
 
 
