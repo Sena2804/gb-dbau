@@ -1,4 +1,5 @@
-"""Styles, thème et CSS pour l'application CNBAU."""
+import base64
+from pathlib import Path
 
 NIVEAU_ORDER = ["Licence", "Master", "Doctorat", "Spécialisation"]
 
@@ -360,10 +361,73 @@ def build_css(colors: dict, light: bool) -> str:
 
     /* --- Sidebar --- */
     section[data-testid="stSidebar"] .stMarkdown h3 {{ font-size: 1.1rem; }}
-
-    {light_overrides}
+    
 </style>
 """
+
+
+def get_sidebar_style(img_path):
+    img_base64 = ""
+    if Path(img_path).exists():
+        with open(img_path, "rb") as f:
+            img_base64 = base64.b64encode(f.read()).decode()
+
+    return f"""
+    <style>
+    
+        [data-testid="stSidebar"] {{
+            background-color: rgba(0, 135, 81, 0.12) !important;
+            backdrop-filter: blur(10px); /* Ajoute un effet de flou premium */
+        }}
+        
+        /* Injection du logo dans le header que tu as inspecté */
+        [data-testid="stSidebarHeader"] {{
+            background-image: url("data:image/png;base64,{img_base64}");
+            background-repeat: no-repeat;
+            background-size: contain;
+            background-position: center;
+            height: 100px;
+            margin-top: 1rem;
+        }}
+
+        /* Suppression du bouton de repli pour "verrouiller" la sidebar */
+        [data-testid="stSidebarCollapseButton"] {{
+            display: none;
+        }}
+
+        /* Ajustement du contenu pour éviter les chevauchements */
+        [data-testid="stSidebarContent"] {{
+            padding-top: 0rem !important;
+        }}
+        
+        div[data-testid="stProgress"] > div > div > div > div {{
+            background-color: #EAC100 !important; /* Jaune Bénin */
+        }}
+
+        button[kind="secondary"] {{
+            /* J'ai mis secondary ici car ton code Python utilise type="secondary" */
+            background-color: rgba(231, 76, 60, 0.2) !important; 
+            color: #e74c3c !important;
+            border: 1px solid #e74c3c !important;
+            transition: 0.3s;
+        }}
+
+        button[kind="secondary"]:hover {{
+            background-color: #e74c3c !important;
+            color: white !important;
+            transform: scale(1.02);
+        }}
+
+        [data-testid="stCaptionContainer"] {{
+            font-weight: 700;
+            letter-spacing: 1px;
+            text-transform: uppercase;
+            font-size: 0.7rem !important;
+            color: rgba(255, 255, 255, 0.6) !important;
+            margin-top: 1rem;
+        }}
+    </style>
+    """
 
 
 def build_sticky_js(colors: dict) -> str:

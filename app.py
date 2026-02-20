@@ -1,12 +1,10 @@
-"""Application Streamlit - Suivi de session CNBAU Bourse de Russie."""
-
 from pathlib import Path
 
 import streamlit as st
 import streamlit.components.v1 as components
 
 import database as db
-from style import NIVEAU_ORDER, build_css, build_sticky_js, get_colors
+from style import NIVEAU_ORDER, build_css, build_sticky_js, get_colors, get_sidebar_style
 from ui_helper import (
     render_candidat_card,
     render_kpi_row,
@@ -438,27 +436,59 @@ components.html(build_sticky_js(COLORS), height=0)
 # Sidebar — Administration
 # ---------------------------------------------------------------------------
 
+st.markdown(get_sidebar_style("assets/image.png"), unsafe_allow_html=True)
+
 with st.sidebar:
+    # def _on_theme_toggle():
+    #     st.session_state["_theme"] = "light" if st.session_state["_theme_toggle"] else "dark"
+
+    # st.toggle("Mode clair", key="_theme_toggle", value=light, on_change=_on_theme_toggle)
+
+    # st.metric("Progression", f"{stats['traites']}/{stats['total']}")
+    # st.progress(stats["traites"] / stats["total"] if stats["total"] > 0 else 0)
+
+    # st.divider()
+
+    # if st.button("Réinitialiser la session", type="secondary", use_container_width=True):
+    #     db.reset_db()
+    #     for key in list(st.session_state.keys()):
+    #         del st.session_state[key]
+    #     st.rerun()
+    st.caption("ÉTAT DE LA MISSION")
+    
+    # Calcul du pourcentage pour le cercle ou la barre
+    progression = stats['traites'] / stats['total'] if stats['total'] > 0 else 0
+    pct = int(progression * 100)
+
+    # Carte de progression stylisée
     st.markdown(f"""
-<div style="display:flex; align-items:center; gap:8px; margin-bottom:1rem;">
-    <span class="ms" style="font-size:24px; color:{COLORS['accent']};">settings</span>
-    <h3 style="margin:0; font-size:1.1rem; color:{COLORS['text_primary']};">Administration</h3>
-</div>
-""", unsafe_allow_html=True)
+        <div style="
+            background: rgba(255, 255, 255, 0.05);
+            padding: 1.2rem;
+            border-radius: 12px;
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            margin-bottom: 1rem;
+        ">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+                <span style="font-size: 0.85rem; font-weight: 600; color: {COLORS['text_primary']};">Progression</span>
+                <span style="font-size: 1rem; font-weight: 700; color: {COLORS['accent']};">{pct}%</span>
+            </div>
+            <div style="font-size: 0.75rem; color: {COLORS['text_primary']}; opacity: 0.7;">
+                {stats['traites']} traités sur {stats['total']} total
+            </div>
+        </div>
+    """, unsafe_allow_html=True)
 
-    def _on_theme_toggle():
-        st.session_state["_theme"] = "light" if st.session_state["_theme_toggle"] else "dark"
-
-    st.toggle("Mode clair", key="_theme_toggle", value=light, on_change=_on_theme_toggle)
-
-    st.caption("Session en cours")
-    st.metric("Progression", f"{stats['traites']}/{stats['total']}")
-    st.progress(stats["traites"] / stats["total"] if stats["total"] > 0 else 0)
+    # Barre de progression personnalisée (couleur accent)
+    st.progress(progression)
 
     st.divider()
 
-    if st.button("Réinitialiser la session", type="secondary", use_container_width=True):
-        db.reset_db()
-        for key in list(st.session_state.keys()):
-            del st.session_state[key]
-        st.rerun()
+    # --- Zone de Danger ---
+    with st.expander("⚙️ Options avancées", expanded=False):
+        st.warning("Action irréversible")
+        if st.button("Réinitialiser la session", type="primary", use_container_width=True):
+            db.reset_db()
+            for key in list(st.session_state.keys()):
+                del st.session_state[key]
+            st.rerun()
