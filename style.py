@@ -173,17 +173,32 @@ def build_css(colors: dict, light: bool) -> str:
         border-color: #d0d7de !important;
     }
 
+    /* --- Tooltips --- */
+    [role="tooltip"],
+    [role="tooltip"] > div,
+    [role="tooltip"] div,
+    [role="tooltip"] span,
+    [role="tooltip"] p,
+    [data-testid="stTooltipContent"],
+    .stTooltipContent {
+        background-color: #24292f !important;
+        color: #ffffff !important;
+    }
+
     /* Restore semantic colors that the blanket rule above would override */
     .badge-favorable, .badge-favorable .ms { color: #3fb950 !important; }
     .badge-defavorable, .badge-defavorable .ms { color: #f85149 !important; }
     .badge-attente, .badge-attente .ms { color: #8b949e !important; }
-    .quota-full .quota-text { color: #f85149 !important; }
+    .badge-suppleant, .badge-suppleant .ms { color: #0969da !important; }
+    .quota-full .quota-text { color: #3fb950 !important; }
     .kpi-card.kpi-green .kpi-icon, .kpi-card.kpi-green .kpi-icon .ms,
     .kpi-card.kpi-green .kpi-value { color: #3fb950 !important; }
     .kpi-card.kpi-red .kpi-icon, .kpi-card.kpi-red .kpi-icon .ms,
     .kpi-card.kpi-red .kpi-value { color: #f85149 !important; }
     .kpi-card.kpi-muted .kpi-icon, .kpi-card.kpi-muted .kpi-icon .ms,
     .kpi-card.kpi-muted .kpi-value { color: #57606a !important; }
+    .kpi-card.kpi-blue .kpi-icon, .kpi-card.kpi-blue .kpi-icon .ms,
+    .kpi-card.kpi-blue .kpi-value { color: #0969da !important; }
     .num-badge { color: #ffffff !important; background: #0969da !important; }
     .alert-quota, .alert-quota .ms { color: #f85149 !important; }
     .niveau-label { color: var(--accent) !important; }
@@ -194,6 +209,7 @@ def build_css(colors: dict, light: bool) -> str:
     #sticky-clone .kpi-green .kpi-icon .ms, #sticky-clone .kpi-green .kpi-value { color: #3fb950 !important; }
     #sticky-clone .kpi-red .kpi-icon .ms, #sticky-clone .kpi-red .kpi-value { color: #f85149 !important; }
     #sticky-clone .kpi-muted .kpi-icon .ms, #sticky-clone .kpi-muted .kpi-value { color: #57606a !important; }
+    #sticky-clone .kpi-blue .kpi-icon .ms, #sticky-clone .kpi-blue .kpi-value { color: #0969da !important; }
     ''' if light else ''
 
     return f"""
@@ -254,6 +270,8 @@ def build_css(colors: dict, light: bool) -> str:
     .kpi-card.kpi-green .kpi-icon, .kpi-card.kpi-green .kpi-value {{ color: #3fb950 !important; }}
     .kpi-card.kpi-red .kpi-icon, .kpi-card.kpi-red .kpi-value {{ color: #f85149 !important; }}
     .kpi-card.kpi-muted .kpi-icon, .kpi-card.kpi-muted .kpi-value {{ color: var(--text-muted) !important; }}
+    .kpi-card.kpi-blue .kpi-icon, .kpi-card.kpi-blue .kpi-icon .ms,
+    .kpi-card.kpi-blue .kpi-value {{ color: #58a6ff !important; }}
 
     /* --- Number badges --- */
     .num-badge {{
@@ -272,6 +290,7 @@ def build_css(colors: dict, light: bool) -> str:
     .badge-favorable {{ background: rgba(63,185,80,0.15); color: #3fb950; border: 1px solid rgba(63,185,80,0.3); }}
     .badge-defavorable {{ background: rgba(248,81,73,0.15); color: #f85149; border: 1px solid rgba(248,81,73,0.3); }}
     .badge-attente {{ background: rgba(139,148,158,0.15); color: var(--text-muted); border: 1px solid rgba(139,148,158,0.3); }}
+    .badge-suppleant {{ background: rgba(88,166,255,0.15); color: #58a6ff; border: 1px solid rgba(88,166,255,0.3); }}
 
     /* --- Quota cards --- */
     .quota-grid {{ display: flex; gap: 10px; flex-wrap: wrap; margin-bottom: 0.8rem; }}
@@ -283,11 +302,11 @@ def build_css(colors: dict, light: bool) -> str:
     .quota-card .quota-bar {{ height: 6px; border-radius: 3px; background: var(--bg-dark); margin: 6px 0; overflow: hidden; }}
     .quota-card .quota-bar-fill {{ height: 100%; border-radius: 3px; transition: width 0.3s; }}
     .quota-card .quota-text {{ font-size: 0.8rem; color: var(--text-muted); }}
-    .quota-ok {{ border-color: rgba(63,185,80,0.3); }}
-    .quota-ok .quota-bar-fill {{ background: #3fb950; }}
-    .quota-full {{ border-color: rgba(248,81,73,0.4); }}
-    .quota-full .quota-bar-fill {{ background: #f85149; }}
-    .quota-full .quota-text {{ color: #f85149; }}
+    .quota-ok {{ border-color: rgba(9,105,218,0.3); }}
+    .quota-ok .quota-bar-fill {{ background: #0969da; }}
+    .quota-full {{ border-color: rgba(63,185,80,0.4); }}
+    .quota-full .quota-bar-fill {{ background: #3fb950; }}
+    .quota-full .quota-text {{ color: #3fb950; }}
 
     /* --- Candidat info card --- */
     .candidat-card {{
@@ -336,7 +355,7 @@ def build_css(colors: dict, light: bool) -> str:
     .sticky-header .kpi-card {{ padding: 0.5rem 0.6rem; }}
     .sticky-header .kpi-value {{ font-size: 1.3rem; }}
 
-    /* --- Action buttons: green / red / yellow by position in 3-col block --- */
+    /* --- Action buttons: green / red / blue / yellow by position in 4-col block --- */
     div[data-testid="stColumn"]:last-child div[data-testid="stHorizontalBlock"] > div[data-testid="stColumn"]:nth-child(1) button:not(:disabled) span[data-testid="stIconMaterial"] {{
         color: #3fb950 !important;
     }}
@@ -344,6 +363,9 @@ def build_css(colors: dict, light: bool) -> str:
         color: #f85149 !important;
     }}
     div[data-testid="stColumn"]:last-child div[data-testid="stHorizontalBlock"] > div[data-testid="stColumn"]:nth-child(3) button:not(:disabled) span[data-testid="stIconMaterial"] {{
+        color: #58a6ff !important;
+    }}
+    div[data-testid="stColumn"]:last-child div[data-testid="stHorizontalBlock"] > div[data-testid="stColumn"]:nth-child(4) button:not(:disabled) span[data-testid="stIconMaterial"] {{
         color: #d29922 !important;
     }}
     /* --- Boutons désactivés : grisés --- */

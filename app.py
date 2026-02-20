@@ -31,7 +31,7 @@ ID_RUSSE_SUFFIX = "/26"
 # ---------------------------------------------------------------------------
 
 if "_theme" not in st.session_state:
-    st.session_state["_theme"] = "dark"
+    st.session_state["_theme"] = "light"
 
 light = st.session_state["_theme"] == "light"
 COLORS = get_colors(light)
@@ -60,32 +60,17 @@ db.init_db()
 
 if not db.is_db_loaded():
     st.info("Chargez le fichier Excel des candidatures pour commencer.")
-    col_upload, col_mock = st.columns(2)
-
-    with col_upload:
-        uploaded = st.file_uploader("Fichier Excel des candidatures", type=["xlsx"])
-        if uploaded:
-            with open("_temp_upload.xlsx", "wb") as f:
-                f.write(uploaded.getvalue())
-            n = db.load_excel_to_db("_temp_upload.xlsx")
-            quotas_path = Path("quotas.json")
-            if quotas_path.exists():
-                db.load_quotas(str(quotas_path))
-            Path("_temp_upload.xlsx").unlink(missing_ok=True)
-            st.success(f"{n} candidatures chargées.")
-            st.rerun()
-
-    with col_mock:
-        if st.button("Charger les données mockées"):
-            mock_path = Path("mock_candidatures.xlsx")
-            if not mock_path.exists():
-                st.error("Lancez d'abord `python generate_mock_data.py`")
-            else:
-                n = db.load_excel_to_db(str(mock_path))
-                db.load_quotas("quotas.json")
-                st.success(f"{n} candidatures mockées chargées.")
-                st.rerun()
-
+    uploaded = st.file_uploader("Fichier Excel des candidatures", type=["xlsx"])
+    if uploaded:
+        with open("_temp_upload.xlsx", "wb") as f:
+            f.write(uploaded.getvalue())
+        n = db.load_excel_to_db("_temp_upload.xlsx")
+        quotas_path = Path("quotas.json")
+        if quotas_path.exists():
+            db.load_quotas(str(quotas_path))
+        Path("_temp_upload.xlsx").unlink(missing_ok=True)
+        st.success(f"{n} candidatures chargées.")
+        st.rerun()
     st.stop()
 
 # ---------------------------------------------------------------------------
@@ -145,7 +130,7 @@ with col_f2:
 with col_f3:
     filtre_avis = st.multiselect(
         "Avis",
-        ["Favorable", "Défavorable", "En attente"],
+        ["Favorable", "Défavorable", "Suppléant", "En attente"],
         placeholder="Filtrer par avis…",
     )
 
@@ -162,9 +147,10 @@ if len(filtered_df) < len(all_df):
     f_total = len(filtered_df)
     f_fav   = len(filtered_df[filtered_df["avis"] == "Favorable"])
     f_def   = len(filtered_df[filtered_df["avis"] == "Défavorable"])
+    f_sup   = len(filtered_df[filtered_df["avis"] == "Suppléant"])
     st.caption(
         f"Filtre actif : {f_total} candidatures | {f_fav} favorables "
-        f"| {f_def} défavorables | {f_total - f_fav - f_def} en attente"
+        f"| {f_def} défavorables | {f_sup} suppléants | {f_total - f_fav - f_def - f_sup} en attente"
     )
 
 # ---------------------------------------------------------------------------
@@ -201,7 +187,7 @@ page_df = filtered_df.iloc[(page - 1) * PAGE_SIZE : page * PAGE_SIZE]
 
 # En-tête du tableau
 for col, label in zip(
-    st.columns([0.5, 2.5, 1.5, 1, 1, 1.5, 0.3, 2]),
+    st.columns([0.5, 2.5, 1.5, 1, 1, 1.5, 0.3, 2.5]),
     ["N°", "Nom", "Filière", "Niveau", "Moyenne", "Avis", "", "Actions"],
 ):
     col.markdown(f"**{label}**")
@@ -212,10 +198,13 @@ st.divider()
 fav_counts_local = db.get_favorables_count()
 
 for _, row in page_df.iterrows():
-    cols = st.columns([0.5, 2.5, 1.5, 1, 1, 1.5, 0.3, 2])
+    cols = st.columns([0.5, 2.5, 1.5, 1, 1, 1.5, 0.3, 2.5])
     id_demande = row["id_demande"]
     avis       = row["avis"]
-    moyenne    = row.get("moyenne", 0.0)
+    try:
+        moyenne = float(row.get("moyenne") or 0)
+    except (ValueError, TypeError):
+        moyenne = 0.0
     key_quota  = (row["niveau_etudes"], row["filiere"])
     places     = quotas.get(key_quota)
     quota_full = places is not None and fav_counts_local.get(key_quota, 0) >= places
@@ -235,7 +224,7 @@ for _, row in page_df.iterrows():
 
     # Actions (Colonne 7) - Maintenant l'index 7 existe !
     with cols[7]:
-        b1, b2, b3 = st.columns(3)
+        b1, b2, b3, b4 = st.columns(4)
         if b1.button("", key=f"fav_{id_demande}", icon=":material/check_circle:",
             disabled=(avis == "Favorable") or (quota_full and avis != "Favorable"),
             help="Favorable"):
@@ -246,7 +235,12 @@ for _, row in page_df.iterrows():
             help="Défavorable"):
             db.update_avis(id_demande, "Défavorable")
             st.rerun()
-        if b3.button("", key=f"att_{id_demande}", icon=":material/schedule:",
+        if b3.button("", key=f"sup_{id_demande}", icon=":material/group_add:",
+            disabled=(avis == "Suppléant"),
+            help="Suppléant"):
+            db.update_avis(id_demande, "Suppléant")
+            st.rerun()
+        if b4.button("", key=f"att_{id_demande}", icon=":material/schedule:",
             disabled=(avis == "En attente"),
             help="En attente"):
             db.update_avis(id_demande, "En attente")
@@ -369,7 +363,7 @@ def render_decisions():
 </div>""", unsafe_allow_html=True)
             st.markdown("<div style='height:0.5rem'></div>", unsafe_allow_html=True)
 
-        btn_col1, btn_col2 = st.columns(2)
+        btn_col1, btn_col2, btn_col3 = st.columns(3)
         with btn_col1:
             if st.button(
                 "Favorable",
@@ -388,6 +382,15 @@ def render_decisions():
                 use_container_width=True,
             ):
                 db.update_avis(candidat["id_demande"], "Défavorable")
+                st.rerun(scope="app")
+
+        with btn_col3:
+            if st.button(
+                "Suppléant",
+                key=f"search_sup_{candidat['id_demande']}",
+                use_container_width=True,
+            ):
+                db.update_avis(candidat["id_demande"], "Suppléant")
                 st.rerun(scope="app")
 
         if candidat["avis"] != "En attente":
@@ -411,9 +414,9 @@ st.markdown(section_header("download", "Export des résultats"), unsafe_allow_ht
 
 col_exp1, col_exp2 = st.columns([1, 3])
 with col_exp1:
-    if st.button("Générer l'export Excel", use_container_width=True):
-        output = "export_decisions_cnbau.xlsx"
-        db.export_to_excel(output)
+    if st.button("Générer l'export Word", use_container_width=True):
+        output = "export_decisions_cnbau.docx"
+        db.export_to_docx(output)
         with open(output, "rb") as f:
             st.session_state["export_data"] = f.read()
         st.session_state["export_ready"] = True
@@ -421,10 +424,10 @@ with col_exp1:
 with col_exp2:
     if st.session_state.get("export_ready"):
         st.download_button(
-            label="Télécharger le fichier Excel",
+            label="Télécharger le fichier Word",
             data=st.session_state["export_data"],
-            file_name="export_decisions_cnbau.xlsx",
-            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            file_name="export_decisions_cnbau.docx",
+            mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
             use_container_width=True,
         )
 

@@ -18,6 +18,8 @@ def render_status(avis: str) -> str:
         return '<span class="badge badge-favorable"><span class="ms">check_circle</span>Favorable</span>'
     if avis == "Défavorable":
         return '<span class="badge badge-defavorable"><span class="ms">cancel</span>Défavorable</span>'
+    if avis == "Suppléant":
+        return '<span class="badge badge-suppleant"><span class="ms">group_add</span>Suppléant</span>'
     return '<span class="badge badge-attente"><span class="ms">schedule</span>En attente</span>'
 
 
@@ -41,6 +43,7 @@ def render_kpi_row(stats: dict) -> str:
         ("task_alt",      stats["traites"],     "Traitées",    ""),
         ("check_circle",  stats["favorables"],  "Favorables",  "kpi-green"),
         ("cancel",        stats["defavorables"],"Défavorables","kpi-red"),
+        ("group_add",     stats["suppleants"],  "Suppléants",  "kpi-blue"),
         ("pending",       stats["restants"],    "Restantes",   "kpi-muted"),
     ]
     cards = ""

@@ -1,5 +1,6 @@
 """Module de gestion SQLite pour les candidatures CNBAU."""
 
+import io
 import json
 import sqlite3
 from pathlib import Path
@@ -43,7 +44,7 @@ def init_db():
             name TEXT NOT NULL, 
             date_lieu_naissance TEXT,
             diplome_filiere_annee TEXT,
-            moyenne REAL,
+            moyenne TEXT,
             observation TEXT,
             filiere TEXT NOT NULL,
             niveau_etudes TEXT NOT NULL,
@@ -72,7 +73,7 @@ def _parse_real_excel(excel_path: str) -> list[dict]:
     """Parse le fichier CNaBAU structuré avec lignes de séparation niveau/filière."""
     from openpyxl import load_workbook
 
-    wb = load_workbook(excel_path, data_only=True) 
+    wb = load_workbook(excel_path, data_only=True)
     ws = wb.active
 
     current_niveau = ""
@@ -115,12 +116,6 @@ def _parse_real_excel(excel_path: str) -> list[dict]:
         def cell_str(idx):
             v = row[idx].value if idx < len(row) else None
             return str(v).strip() if v is not None else ""
-        
-        raw_moyenne = row[6].value
-        try:
-            moyenne = float(raw_moyenne) if raw_moyenne is not None else 0.0
-        except (ValueError, TypeError):
-            moyenne = 0.0
 
         id_russe = cell_str(2)
         candidates.append({
@@ -131,8 +126,8 @@ def _parse_real_excel(excel_path: str) -> list[dict]:
             "name": cell_str(3),
             "date_lieu_naissance": cell_str(4),
             "diplome_filiere_annee": cell_str(5),
+            "moyenne": cell_str(6),
             "observation": cell_str(7),
-            "moyenne": moyenne,
             "filiere": current_filiere,
             "niveau_etudes": current_niveau,
             "avis": cell_str(8) or "En attente",
@@ -361,40 +356,225 @@ def get_stats() -> dict:
     defavorables = conn.execute(
         "SELECT COUNT(*) FROM candidatures WHERE avis = 'Défavorable'"
     ).fetchone()[0]
+    suppleants = conn.execute(
+        "SELECT COUNT(*) FROM candidatures WHERE avis = 'Suppléant'"
+    ).fetchone()[0]
     conn.close()
     return {
         "total": total,
-        "traites": favorables + defavorables,
+        "traites": favorables + defavorables + suppleants,
         "favorables": favorables,
         "defavorables": defavorables,
-        "restants": total - favorables - defavorables,
+        "suppleants": suppleants,
+        "restants": total - favorables - defavorables - suppleants,
     }
 
 
-def export_to_excel(output_path: str) -> str:
-    """Exporte les candidatures triées par numéro de demande."""
-    df = get_all_candidatures()
-    df = df.drop(columns=["id_demande"])
-    df = df.sort_values("numero")
-    col_order = [
-        "numero", "sexe", "id_russe", "name", "date_lieu_naissance",
-        "diplome_filiere_annee", "moyenne", "observation", "filiere", "niveau_etudes", "avis",
-    ]
-    df = df[[c for c in col_order if c in df.columns]]
-    df = df.rename(columns={
-        "numero": "NUMÉRO",
-        "sexe": "SEXE",
-        "id_russe": "ID RUSSE",
-        "name": "NOM & PRÉNOM",
-        "date_lieu_naissance": "DATE & LIEU DE NAISSANCE",
-        "diplome_filiere_annee": "DIPLÔME, FILIÈRE & ANNÉE",
-        "moyenne": "MOYENNE / MENTION",
-        "observation": "OBSERVATION",
-        "filiere": "FILIÈRE",
-        "niveau_etudes": "NIVEAU D'ÉTUDES",
-        "avis": "AVIS",
-    })
-    df.to_excel(output_path, index=False, engine="openpyxl")
+NIVEAU_ORDER = ["Licence", "Master", "Doctorat", "Spécialisation"]
+
+
+def export_to_docx(output_path: str) -> str:
+    """Exporte les candidatures Favorable/Suppléant dans un document Word (.docx)."""
+    from itertools import groupby
+
+    from docx import Document
+    from docx.enum.table import WD_ALIGN_VERTICAL
+    from docx.enum.text import WD_ALIGN_PARAGRAPH
+    from docx.oxml import OxmlElement
+    from docx.oxml.ns import qn
+    from docx.shared import Pt, Twips
+
+    conn = get_connection()
+    rows = conn.execute(
+        """SELECT * FROM candidatures
+           WHERE avis IN ('Favorable', 'Suppléant')
+           ORDER BY niveau_etudes, filiere, numero"""
+    ).fetchall()
+    conn.close()
+    candidates = [dict(r) for r in rows]
+
+    favorables = [c for c in candidates if c["avis"] == "Favorable"]
+    suppleants = [c for c in candidates if c["avis"] == "Suppléant"]
+
+    doc = Document()
+
+    # --- Page margins ---
+    for section in doc.sections:
+        section.top_margin = Twips(720)
+        section.bottom_margin = Twips(720)
+        section.left_margin = Twips(720)
+        section.right_margin = Twips(720)
+
+    # --- Page numbers (centered in footer) ---
+    for section in doc.sections:
+        footer = section.footer
+        footer.is_linked_to_previous = False
+        p = footer.paragraphs[0] if footer.paragraphs else footer.add_paragraph()
+        p.alignment = WD_ALIGN_PARAGRAPH.CENTER
+        run = p.add_run()
+        run.font.name = "Trebuchet MS"
+        run.font.size = Pt(9)
+        fldChar1 = OxmlElement("w:fldChar")
+        fldChar1.set(qn("w:fldCharType"), "begin")
+        run._r.append(fldChar1)
+        instrText = OxmlElement("w:instrText")
+        instrText.set(qn("xml:space"), "preserve")
+        instrText.text = " PAGE "
+        run._r.append(instrText)
+        fldChar2 = OxmlElement("w:fldChar")
+        fldChar2.set(qn("w:fldCharType"), "end")
+        run._r.append(fldChar2)
+
+    def set_run_font(run, size=10, bold=False, underline=False):
+        run.font.name = "Trebuchet MS"
+        run.font.size = Pt(size)
+        run.bold = bold
+        run.underline = underline
+
+    def set_cell_shading(cell, color):
+        tcPr = cell._tc.get_or_add_tcPr()
+        shd = OxmlElement("w:shd")
+        shd.set(qn("w:val"), "clear")
+        shd.set(qn("w:color"), "auto")
+        shd.set(qn("w:fill"), color)
+        tcPr.append(shd)
+
+    def merge_row_cells(row, table):
+        """Merge all cells in a row using gridSpan."""
+        n_cols = len(table.columns)
+        tc = row.cells[0]._tc
+        tcPr = tc.get_or_add_tcPr()
+        gs = OxmlElement("w:gridSpan")
+        gs.set(qn("w:val"), str(n_cols))
+        tcPr.append(gs)
+        tr = row._tr
+        tcs = tr.findall(qn("w:tc"))
+        for extra_tc in tcs[1:]:
+            tr.remove(extra_tc)
+
+    def add_table_for_section(candidates_list):
+        table = doc.add_table(rows=1, cols=4, style="Table Grid")
+
+        col_widths = [Twips(567), Twips(4254), Twips(4223), Twips(2127)]
+        for i, width in enumerate(col_widths):
+            table.columns[i].width = width
+
+        headers = ["N° ", "FILIERE", "NOM ET PRENOMS", "OBSERVATIONS"]
+        for i, text in enumerate(headers):
+            cell = table.rows[0].cells[i]
+            cell.text = ""
+            p = cell.paragraphs[0]
+            p.alignment = WD_ALIGN_PARAGRAPH.CENTER
+            run = p.add_run(text)
+            set_run_font(run, size=11)
+            set_cell_shading(cell, "BFBFBF")
+            cell.vertical_alignment = WD_ALIGN_VERTICAL.CENTER
+
+        def sort_key(c):
+            niv = c["niveau_etudes"]
+            idx = NIVEAU_ORDER.index(niv) if niv in NIVEAU_ORDER else 99
+            return (idx, c["filiere"], c.get("numero", 0) or 0)
+
+        candidates_list = sorted(candidates_list, key=sort_key)
+
+        num = 1
+        for niveau, niveau_group in groupby(candidates_list, key=lambda c: c["niveau_etudes"]):
+            niveau_group = list(niveau_group)
+            row = table.add_row()
+            cell = row.cells[0]
+            cell.text = ""
+            p = cell.paragraphs[0]
+            p.alignment = WD_ALIGN_PARAGRAPH.CENTER
+            run = p.add_run(niveau.upper())
+            set_run_font(run, size=11, bold=True)
+            set_cell_shading(cell, "E7E6E6")
+            merge_row_cells(row, table)
+
+            for filiere, fil_group in groupby(niveau_group, key=lambda c: c["filiere"]):
+                fil_group = list(fil_group)
+                first_row_idx = len(table.rows)
+
+                for i_in_fil, c in enumerate(fil_group):
+                    row = table.add_row()
+                    cell_num = row.cells[0]
+                    cell_num.text = ""
+                    p = cell_num.paragraphs[0]
+                    p.alignment = WD_ALIGN_PARAGRAPH.CENTER
+                    run = p.add_run(str(num))
+                    set_run_font(run, size=11)
+
+                    cell_fil = row.cells[1]
+                    cell_fil.text = ""
+                    if i_in_fil == 0:
+                        p = cell_fil.paragraphs[0]
+                        run = p.add_run(c["filiere"])
+                        set_run_font(run, size=11)
+
+                    cell_name = row.cells[2]
+                    cell_name.text = ""
+                    p = cell_name.paragraphs[0]
+                    run = p.add_run(c["name"])
+                    set_run_font(run, size=11)
+
+                    cell_obs = row.cells[3]
+                    cell_obs.text = ""
+                    p = cell_obs.paragraphs[0]
+                    obs = c.get("observation") or ""
+                    run = p.add_run(obs)
+                    set_run_font(run, size=11)
+
+                    num += 1
+
+                last_row_idx = len(table.rows) - 1
+                if last_row_idx > first_row_idx:
+                    table.cell(first_row_idx, 1).merge(table.cell(last_row_idx, 1))
+
+        return table
+
+    # --- Logo ---
+    logo_path = Path(__file__).parent / "assets" / "logo.png"
+    if logo_path.exists():
+        section = doc.sections[0]
+        avail_width = section.page_width - section.left_margin - section.right_margin
+        p = doc.add_paragraph()
+        p.alignment = WD_ALIGN_PARAGRAPH.CENTER
+        p.add_run().add_picture(str(logo_path), width=avail_width)
+
+    # --- Document header ---
+    p = doc.add_paragraph()
+    p.alignment = WD_ALIGN_PARAGRAPH.CENTER
+    run = p.add_run("DIRECTION DES BOURSES ET AIDES UNIVERSITAIRES ")
+    set_run_font(run, size=10, bold=True)
+
+    p = doc.add_paragraph()
+    p.alignment = WD_ALIGN_PARAGRAPH.CENTER
+    run = p.add_run(
+        "LISTE DES ETUDIANTS PRESELECTIONNES POUR BENEFICIER DE LA BOURSE "
+        "DE COOPERATION RUSSE AU TITRE DE L\u2019ANNEE ACADEMIQUE 2025-2026"
+    )
+    set_run_font(run, size=10, bold=True)
+
+    doc.add_paragraph()
+
+    # --- Section Titulaires ---
+    p = doc.add_paragraph()
+    p.alignment = WD_ALIGN_PARAGRAPH.JUSTIFY
+    run = p.add_run("LISTE DES CANDIDATS TITULAIRES ")
+    set_run_font(run, size=13, underline=True)
+
+    add_table_for_section(favorables)
+
+    doc.add_paragraph()
+
+    # --- Section Suppléants ---
+    p = doc.add_paragraph()
+    p.alignment = WD_ALIGN_PARAGRAPH.JUSTIFY
+    run = p.add_run("LISTE DES CANDIDATS SUPPLEANTS")
+    set_run_font(run, size=13, underline=True)
+
+    add_table_for_section(suppleants)
+
+    doc.save(output_path)
     return output_path
 
 
