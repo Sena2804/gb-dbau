@@ -9,7 +9,7 @@ def get_colors(light: bool) -> dict:
         "bg_page":       "#ffffff"              if light else "#0e1117",
         "bg_card":       "#f6f8fa"              if light else "#161b22",
         "bg_dark":       "#e1e4e8"              if light else "#21262d",
-        "text_primary":  "#24292f"              if light else "#e6edf3",
+        "text_primary":  "#24292f",
         "text_muted":    "#57606a"              if light else "#8b949e",
         "accent":        "#0969da"              if light else "#6C9FFF",
         "border":        "#d0d7de"              if light else "#30363d",
@@ -388,7 +388,7 @@ def build_css(colors: dict, light: bool) -> str:
 """
 
 
-def get_sidebar_style(img_path):
+def get_sidebar_style(img_path, progress_color="#6C9FFF"):
     img_base64 = ""
     if Path(img_path).exists():
         with open(img_path, "rb") as f:
@@ -423,21 +423,8 @@ def get_sidebar_style(img_path):
         }}
         
         div[data-testid="stProgress"] > div > div > div > div {{
-            background-color: #EAC100 !important; /* Jaune Bénin */
-        }}
-
-        button[kind="secondary"] {{
-            /* J'ai mis secondary ici car ton code Python utilise type="secondary" */
-            background-color: rgba(231, 76, 60, 0.2) !important; 
-            color: #e74c3c !important;
-            border: 1px solid #e74c3c !important;
-            transition: 0.3s;
-        }}
-
-        button[kind="secondary"]:hover {{
-            background-color: #e74c3c !important;
-            color: white !important;
-            transform: scale(1.02);
+            background-color: {progress_color} !important;
+            transition: background-color 0.5s ease;
         }}
 
         [data-testid="stCaptionContainer"] {{
@@ -447,6 +434,22 @@ def get_sidebar_style(img_path):
             font-size: 0.7rem !important;
             color: rgba(255, 255, 255, 0.6) !important;
             margin-top: 1rem;
+        }}
+        
+        [data-testid="stSidebar"] button[kind="secondary"] {{
+            border: 2px solid #ff4b4b !important;
+            color: #ff4b4b !important;
+            background-color: transparent !important;
+            transition: all 0.3s ease;
+            border-radius: 8px;
+            margin-top: auto; /* Sécurité supplémentaire */
+        }}
+
+        /* Hover : Fond plein rouge et texte blanc */
+        [data-testid="stSidebar"] button[kind="secondary"]:hover {{
+            background-color: #ff4b4b !important;
+            color: white !important;
+            box-shadow: 0 4px 12px rgba(255, 75, 75, 0.3);
         }}
     </style>
     """
