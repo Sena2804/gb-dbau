@@ -580,7 +580,7 @@ def export_to_docx(output_path: str) -> str:
     # --- Section Suppléants ---
     p = doc.add_paragraph()
     p.alignment = WD_ALIGN_PARAGRAPH.JUSTIFY
-    run = p.add_run("LISTE DES CANDIDATS SUPPLEANTS")
+    run = p.add_run("LISTE DES CANDIDATS SUPPLÉANTS")
     set_run_font(run, size=13, underline=True)
 
     add_table_for_section(suppleants)
@@ -619,7 +619,7 @@ def export_all_avis_to_docx(output_path: str) -> str:
     # --- Section Suppléants ---
     p = doc.add_paragraph()
     p.alignment = WD_ALIGN_PARAGRAPH.JUSTIFY
-    run = p.add_run("LISTE DES CANDIDATS SUPPLEANTS")
+    run = p.add_run("LISTE DES CANDIDATS SUPPLÉANTS")
     set_run_font(run, size=13, underline=True)
     add_table_for_section(suppleants)
     doc.add_paragraph()
