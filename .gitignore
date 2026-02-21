@@ -2,6 +2,8 @@ venv/
 .venv/
 env/
 
+.idea/
+
 __pycache__/
 *.py[cod]
 *$py.class
@@ -15,3 +17,6 @@ build/
 
 .DS_Store
 Thumbs.db
+
+cnbau_session.db
+export_*

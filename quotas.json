@@ -1,0 +1,63 @@
+{
+  "Licence": {
+    "Programmation et Gestion des Systèmes Informatiques": 2,
+    "Mécanique et modèle mathématiques": 2,
+    "Cartographie et Géoinformatique": 2,
+    "Photonique et Informatique Optique": 2,
+    "Génie Energétique": 2,
+    "Biotechnologie": 2,
+    "Exploitation Technique des Appareils volants et des moteurs": 2,
+    "Aménagement Foncier et Cadastre": 2,
+    "Chimie et Pédologie Agricole": 4,
+    "Electronique et Nanoélectronique": 2,
+    "Tourisme": 2,
+    "Hôtellerie": 2,
+    "Bioressources Aquatiques et Acquaculture": 2,
+    "Expertise Vétérinaire et Sanitaire": 2,
+    "Cultures Physiques pour les personnes handicapées": 2,
+    "Gestion des Musées et Protection de l'Héritage Culturel et Naturel": 2,
+    "Design": 2,
+    "Métiers d'art appliqué et métiers tradionnels": 2,
+    "Medécine Générale": 5,
+    "Pharmacie": 2
+  },
+  "Master": {
+    "Génie Logiciel": 4,
+    "Sécurité de l'Information dans les Systèmes de Télécommunication": 4,
+    "Mécanique et Modèlisation Mathématiques": 7,
+    "Génie Agricole": 8,
+    "Energétique et Electrotecnique": 4,
+    "Ecologie et Gestion de l'Environnement": 7,
+    "Machine et Outillage Technologiques": 4,
+    "Automatisation des Processus Technologiques et de Production": 4,
+    "Mathématiques et Sciences Informatiques": 4,
+    "Electronique et Nanoélectrique": 4,
+    "Système et Technologies Biotechniques": 4,
+    "Tourisme": 4,
+    "Hotellerie": 4,
+    "Culture Physique pour les personnes ayant des problèmes de santé (Culture physique adaptative)": 4,
+    "Bioressources aquatique et aquaculture": 3,
+    "Design (par industrie)": 3,
+    "Métiers d'art appliqué et métiers traditionnels": 3,
+    "Restauration": 3,
+    "Construction": 3,
+    "Exploitation Technique de Systènes Electriques d'Aeronefs et de Systèmes de Pilotage Aérien et de Navigation": 3,
+    "Santé Publique": 3,
+    "Pharmacie Industrielle": 3
+  },
+  "Doctorat": {
+    "Expertise médico-légale": 1,
+    "Médecine transfusionnelle": 1,
+    "Radiothérapie": 2,
+    "Pharmacologie clinique": 1,
+    "Génétique de laboratoire": 1,
+    "Diagnostic et traitement radiographiques endovasculaires": 1,
+    "Allergologie et immunologie": 2,
+    "Sécurité Informatique": 1
+  },
+  "Spécialisation": {
+    "Cardiologie Pédiatrique": 2,
+    "Dentisterie pédiatrique": 1,
+    "Oncologie": 2
+  }
+}
