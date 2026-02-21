@@ -213,6 +213,8 @@ def build_css(colors: dict, light: bool) -> str:
     #sticky-clone .kpi-red .kpi-icon .ms, #sticky-clone .kpi-red .kpi-value { color: #f85149 !important; }
     #sticky-clone .kpi-muted .kpi-icon .ms, #sticky-clone .kpi-muted .kpi-value { color: #57606a !important; }
     #sticky-clone .kpi-blue .kpi-icon .ms, #sticky-clone .kpi-blue .kpi-value { color: #0969da !important; }
+    .export-card-title { color: #24292f !important; }
+    .export-card-desc { color: #57606a !important; }
     ''' if light else ''
 
     return f"""
@@ -557,6 +559,39 @@ def build_css(colors: dict, light: bool) -> str:
         font-weight: 600;
         width: 140px;
         font-size: 0.95rem;
+    }}
+
+    /* ================================================================
+       EXPORT CARDS
+    ================================================================ */
+    .export-card {{
+        background: var(--bg-card);
+        border: 2px solid var(--border);
+        border-radius: 14px;
+        padding: 1.2rem 1.5rem;
+        margin-bottom: 1rem;
+        box-shadow: 0 2px 6px var(--shadow);
+        transition: border-color 0.2s, box-shadow 0.15s;
+    }}
+    .export-card:hover {{
+        border-color: var(--accent);
+        box-shadow: 0 4px 14px var(--shadow);
+    }}
+    .export-card-header {{
+        display: flex;
+        align-items: flex-start;
+        gap: 14px;
+    }}
+    .export-card-title {{
+        font-size: 1.2rem;
+        font-weight: 700;
+        color: var(--text-primary);
+        margin-bottom: 4px;
+    }}
+    .export-card-desc {{
+        font-size: 0.95rem;
+        color: var(--text-muted);
+        line-height: 1.4;
     }}
 
     /* ================================================================

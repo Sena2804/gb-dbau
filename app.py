@@ -456,28 +456,137 @@ with tab_eval:
 with tab_export:
     st.markdown("<div style='height:1rem'></div>", unsafe_allow_html=True)
     st.markdown(section_header("download", "Génération des documents officiels"), unsafe_allow_html=True)
-    st.info("Générez le fichier de décisions finales pour transmission officielle (format Word).")
-    st.markdown("<div style='height:0.5rem'></div>", unsafe_allow_html=True)
+    st.caption("Générez et téléchargez les documents de décisions finales pour transmission officielle.")
+    st.markdown("<div style='height:1rem'></div>", unsafe_allow_html=True)
 
-    col_exp1, col_exp2, _ = st.columns([1, 1, 2])
-
-    with col_exp1:
-        if st.button("⬇ Générer l'export Word", type="primary", use_container_width=True):
+    # --- Export 1 : Word — Titulaires & Suppléants ---
+    st.markdown(f"""
+    <div class="export-card">
+        <div class="export-card-header">
+            <span class="ms" style="font-size:28px; color:{COLORS['accent']};">description</span>
+            <div>
+                <div class="export-card-title">Export Word — Titulaires & Suppléants</div>
+                <div class="export-card-desc">Document officiel avec la liste des candidats Favorables (Titulaires) et Suppléants, organisée par niveau et filière.</div>
+            </div>
+        </div>
+    </div>
+    """, unsafe_allow_html=True)
+    col_g1, col_d1, _ = st.columns([1, 1, 2])
+    with col_g1:
+        if st.button("Générer", key="gen_word", type="primary", use_container_width=True, icon=":material/description:"):
             with st.spinner("Génération en cours…"):
                 output = "export_decisions_cnbau.docx"
                 db.export_to_docx(output)
                 with open(output, "rb") as f:
-                    st.session_state["export_data"] = f.read()
-                st.session_state["export_ready"] = True
-
-    with col_exp2:
-        if st.session_state.get("export_ready"):
+                    st.session_state["export_word_data"] = f.read()
+                st.session_state["export_word_ready"] = True
+    with col_d1:
+        if st.session_state.get("export_word_ready"):
             st.download_button(
-                label="📄 Télécharger le document",
-                data=st.session_state["export_data"],
+                label="Télécharger (.docx)", key="dl_word",
+                data=st.session_state["export_word_data"],
                 file_name="export_decisions_cnbau.docx",
                 mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-                use_container_width=True,
+                use_container_width=True, icon=":material/download:",
+            )
+
+    st.divider()
+
+    # --- Export 2 : Word — Toutes les décisions ---
+    st.markdown(f"""
+    <div class="export-card">
+        <div class="export-card-header">
+            <span class="ms" style="font-size:28px; color:{COLORS['accent']};">fact_check</span>
+            <div>
+                <div class="export-card-title">Export Word — Toutes les décisions</div>
+                <div class="export-card-desc">Document complet incluant Titulaires, Suppléants et Candidats non retenus (Défavorables), organisé par niveau et filière.</div>
+            </div>
+        </div>
+    </div>
+    """, unsafe_allow_html=True)
+    col_g2, col_d2, _ = st.columns([1, 1, 2])
+    with col_g2:
+        if st.button("Générer", key="gen_word_all", type="primary", use_container_width=True, icon=":material/fact_check:"):
+            with st.spinner("Génération en cours…"):
+                output = "export_toutes_decisions_cnbau.docx"
+                db.export_all_avis_to_docx(output)
+                with open(output, "rb") as f:
+                    st.session_state["export_word_all_data"] = f.read()
+                st.session_state["export_word_all_ready"] = True
+    with col_d2:
+        if st.session_state.get("export_word_all_ready"):
+            st.download_button(
+                label="Télécharger (.docx)", key="dl_word_all",
+                data=st.session_state["export_word_all_data"],
+                file_name="export_toutes_decisions_cnbau.docx",
+                mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+                use_container_width=True, icon=":material/download:",
+            )
+
+    st.divider()
+
+    # --- Export 3 : Excel — Candidatures par avis ---
+    st.markdown(f"""
+    <div class="export-card">
+        <div class="export-card-header">
+            <span class="ms" style="font-size:28px; color:#3fb950;">table_chart</span>
+            <div>
+                <div class="export-card-title">Export Excel — Candidatures par avis</div>
+                <div class="export-card-desc">Fichier Excel avec une feuille par catégorie d'avis (Favorable, Suppléant, Défavorable). Idéal pour l'analyse et le traitement des données.</div>
+            </div>
+        </div>
+    </div>
+    """, unsafe_allow_html=True)
+    col_g3, col_d3, _ = st.columns([1, 1, 2])
+    with col_g3:
+        if st.button("Générer", key="gen_excel_avis", type="primary", use_container_width=True, icon=":material/table_chart:"):
+            with st.spinner("Génération en cours…"):
+                output = "export_decisions_cnbau.xlsx"
+                db.export_avis_to_xlsx(output)
+                with open(output, "rb") as f:
+                    st.session_state["export_excel_avis_data"] = f.read()
+                st.session_state["export_excel_avis_ready"] = True
+    with col_d3:
+        if st.session_state.get("export_excel_avis_ready"):
+            st.download_button(
+                label="Télécharger (.xlsx)", key="dl_excel_avis",
+                data=st.session_state["export_excel_avis_data"],
+                file_name="export_decisions_cnbau.xlsx",
+                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                use_container_width=True, icon=":material/download:",
+            )
+
+    st.divider()
+
+    # --- Export 4 : Excel — Grille des quotas ---
+    st.markdown(f"""
+    <div class="export-card">
+        <div class="export-card-header">
+            <span class="ms" style="font-size:28px; color:#d29922;">grid_view</span>
+            <div>
+                <div class="export-card-title">Export Excel — Grille des quotas</div>
+                <div class="export-card-desc">Document de référence listant toutes les filières par niveau avec leurs quotas, le nombre de favorables et les places restantes.</div>
+            </div>
+        </div>
+    </div>
+    """, unsafe_allow_html=True)
+    col_g4, col_d4, _ = st.columns([1, 1, 2])
+    with col_g4:
+        if st.button("Générer", key="gen_excel_quotas", type="primary", use_container_width=True, icon=":material/grid_view:"):
+            with st.spinner("Génération en cours…"):
+                output = "export_quotas_cnbau.xlsx"
+                db.export_quotas_to_xlsx(output)
+                with open(output, "rb") as f:
+                    st.session_state["export_excel_quotas_data"] = f.read()
+                st.session_state["export_excel_quotas_ready"] = True
+    with col_d4:
+        if st.session_state.get("export_excel_quotas_ready"):
+            st.download_button(
+                label="Télécharger (.xlsx)", key="dl_excel_quotas",
+                data=st.session_state["export_excel_quotas_data"],
+                file_name="export_quotas_cnbau.xlsx",
+                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                use_container_width=True, icon=":material/download:",
             )
 
 # ---------------------------------------------------------------------------

@@ -373,8 +373,10 @@ def get_stats() -> dict:
 NIVEAU_ORDER = ["Licence", "Master", "Doctorat", "Spécialisation"]
 
 
-def export_to_docx(output_path: str) -> str:
-    """Exporte les candidatures Favorable/Suppléant dans un document Word (.docx)."""
+def _create_base_docx():
+    """Crée un Document Word de base avec logo, en-tête, marges et numéros de page.
+    Retourne (doc, add_table_for_section, set_run_font).
+    """
     from itertools import groupby
 
     from docx import Document
@@ -383,18 +385,6 @@ def export_to_docx(output_path: str) -> str:
     from docx.oxml import OxmlElement
     from docx.oxml.ns import qn
     from docx.shared import Pt, Twips
-
-    conn = get_connection()
-    rows = conn.execute(
-        """SELECT * FROM candidatures
-           WHERE avis IN ('Favorable', 'Suppléant')
-           ORDER BY niveau_etudes, filiere, numero"""
-    ).fetchall()
-    conn.close()
-    candidates = [dict(r) for r in rows]
-
-    favorables = [c for c in candidates if c["avis"] == "Favorable"]
-    suppleants = [c for c in candidates if c["avis"] == "Suppléant"]
 
     doc = Document()
 
@@ -556,6 +546,27 @@ def export_to_docx(output_path: str) -> str:
 
     doc.add_paragraph()
 
+    return doc, add_table_for_section, set_run_font
+
+
+def export_to_docx(output_path: str) -> str:
+    """Exporte les candidatures Favorable/Suppléant dans un document Word (.docx)."""
+    from docx.enum.text import WD_ALIGN_PARAGRAPH
+
+    conn = get_connection()
+    rows = conn.execute(
+        """SELECT * FROM candidatures
+           WHERE avis IN ('Favorable', 'Suppléant')
+           ORDER BY niveau_etudes, filiere, numero"""
+    ).fetchall()
+    conn.close()
+    candidates = [dict(r) for r in rows]
+
+    favorables = [c for c in candidates if c["avis"] == "Favorable"]
+    suppleants = [c for c in candidates if c["avis"] == "Suppléant"]
+
+    doc, add_table_for_section, set_run_font = _create_base_docx()
+
     # --- Section Titulaires ---
     p = doc.add_paragraph()
     p.alignment = WD_ALIGN_PARAGRAPH.JUSTIFY
@@ -575,6 +586,229 @@ def export_to_docx(output_path: str) -> str:
     add_table_for_section(suppleants)
 
     doc.save(output_path)
+    return output_path
+
+
+def export_all_avis_to_docx(output_path: str) -> str:
+    """Exporte TOUTES les candidatures (Favorable, Suppléant, Défavorable) dans un document Word."""
+    from docx.enum.text import WD_ALIGN_PARAGRAPH
+
+    conn = get_connection()
+    rows = conn.execute(
+        """SELECT * FROM candidatures
+           WHERE avis IN ('Favorable', 'Suppléant', 'Défavorable')
+           ORDER BY niveau_etudes, filiere, numero"""
+    ).fetchall()
+    conn.close()
+    candidates = [dict(r) for r in rows]
+
+    favorables = [c for c in candidates if c["avis"] == "Favorable"]
+    suppleants = [c for c in candidates if c["avis"] == "Suppléant"]
+    defavorables = [c for c in candidates if c["avis"] == "Défavorable"]
+
+    doc, add_table_for_section, set_run_font = _create_base_docx()
+
+    # --- Section Titulaires ---
+    p = doc.add_paragraph()
+    p.alignment = WD_ALIGN_PARAGRAPH.JUSTIFY
+    run = p.add_run("LISTE DES CANDIDATS TITULAIRES ")
+    set_run_font(run, size=13, underline=True)
+    add_table_for_section(favorables)
+    doc.add_paragraph()
+
+    # --- Section Suppléants ---
+    p = doc.add_paragraph()
+    p.alignment = WD_ALIGN_PARAGRAPH.JUSTIFY
+    run = p.add_run("LISTE DES CANDIDATS SUPPLEANTS")
+    set_run_font(run, size=13, underline=True)
+    add_table_for_section(suppleants)
+    doc.add_paragraph()
+
+    # --- Section Défavorables ---
+    p = doc.add_paragraph()
+    p.alignment = WD_ALIGN_PARAGRAPH.JUSTIFY
+    run = p.add_run("LISTE DES CANDIDATS NON RETENUS")
+    set_run_font(run, size=13, underline=True)
+    add_table_for_section(defavorables)
+
+    doc.save(output_path)
+    return output_path
+
+
+def export_avis_to_xlsx(output_path: str) -> str:
+    """Exporte les candidatures par avis dans un fichier Excel avec une feuille par avis."""
+    from itertools import groupby
+
+    from openpyxl import Workbook
+    from openpyxl.styles import Alignment, Font, PatternFill
+    from openpyxl.utils import get_column_letter
+
+    conn = get_connection()
+
+    avis_config = [
+        ("Favorable", "Favorables (Titulaires)"),
+        ("Suppléant", "Suppléants"),
+        ("Défavorable", "Défavorables"),
+    ]
+
+    wb = Workbook()
+    wb.remove(wb.active)
+
+    header_font = Font(name="Trebuchet MS", bold=True, size=11)
+    header_fill = PatternFill(start_color="BFBFBF", end_color="BFBFBF", fill_type="solid")
+    niveau_fill = PatternFill(start_color="E7E6E6", end_color="E7E6E6", fill_type="solid")
+    headers = ["N°", "Filière", "Nom et Prénoms", "Observation"]
+    col_widths = [8, 45, 35, 25]
+
+    for avis_value, sheet_name in avis_config:
+        rows = conn.execute(
+            """SELECT numero, name, filiere, niveau_etudes, observation
+               FROM candidatures
+               WHERE avis = ?
+               ORDER BY niveau_etudes, filiere, numero""",
+            (avis_value,),
+        ).fetchall()
+
+        ws = wb.create_sheet(title=sheet_name)
+
+        for col_idx, header in enumerate(headers, 1):
+            cell = ws.cell(row=1, column=col_idx, value=header)
+            cell.font = header_font
+            cell.fill = header_fill
+            cell.alignment = Alignment(horizontal="center")
+
+        for col_idx, width in enumerate(col_widths, 1):
+            ws.column_dimensions[get_column_letter(col_idx)].width = width
+
+        candidates = [dict(r) for r in rows]
+
+        def sort_key(c):
+            niv = c["niveau_etudes"]
+            idx = NIVEAU_ORDER.index(niv) if niv in NIVEAU_ORDER else 99
+            return (idx, c["filiere"], c.get("numero", 0) or 0)
+
+        candidates.sort(key=sort_key)
+
+        current_row = 2
+        for niveau, niveau_group in groupby(candidates, key=lambda c: c["niveau_etudes"]):
+            cell = ws.cell(row=current_row, column=1, value=niveau.upper())
+            cell.font = Font(name="Trebuchet MS", bold=True, size=11)
+            for col_idx in range(1, len(headers) + 1):
+                ws.cell(row=current_row, column=col_idx).fill = niveau_fill
+            ws.merge_cells(
+                start_row=current_row, start_column=1,
+                end_row=current_row, end_column=len(headers),
+            )
+            current_row += 1
+
+            for c in niveau_group:
+                ws.cell(row=current_row, column=1, value=c.get("numero", ""))
+                ws.cell(row=current_row, column=2, value=c.get("filiere", ""))
+                ws.cell(row=current_row, column=3, value=c.get("name", ""))
+                ws.cell(row=current_row, column=4, value=c.get("observation", ""))
+                current_row += 1
+
+    conn.close()
+    wb.save(output_path)
+    return output_path
+
+
+def export_quotas_to_xlsx(output_path: str) -> str:
+    """Exporte la grille des quotas par filière et par niveau dans un fichier Excel."""
+    from itertools import groupby
+
+    from openpyxl import Workbook
+    from openpyxl.styles import Alignment, Font, PatternFill
+    from openpyxl.utils import get_column_letter
+
+    conn = get_connection()
+    quotas_rows = conn.execute(
+        "SELECT niveau_etudes, filiere, nb_places FROM quotas ORDER BY niveau_etudes, filiere"
+    ).fetchall()
+
+    fav_rows = conn.execute(
+        """SELECT niveau_etudes, filiere, COUNT(*) as n
+           FROM candidatures WHERE avis = 'Favorable'
+           GROUP BY niveau_etudes, filiere"""
+    ).fetchall()
+    conn.close()
+
+    fav_counts = {(r["niveau_etudes"], r["filiere"]): r["n"] for r in fav_rows}
+
+    wb = Workbook()
+    ws = wb.active
+    ws.title = "Quotas par Filière"
+
+    headers = ["Niveau", "Filière", "Places (Quota)", "Favorables", "Restantes"]
+    header_font = Font(name="Trebuchet MS", bold=True, size=11)
+    header_fill = PatternFill(start_color="BFBFBF", end_color="BFBFBF", fill_type="solid")
+    niveau_fill = PatternFill(start_color="E7E6E6", end_color="E7E6E6", fill_type="solid")
+    col_widths = [18, 50, 16, 14, 14]
+
+    for col_idx, header in enumerate(headers, 1):
+        cell = ws.cell(row=1, column=col_idx, value=header)
+        cell.font = header_font
+        cell.fill = header_fill
+        cell.alignment = Alignment(horizontal="center")
+
+    for col_idx, width in enumerate(col_widths, 1):
+        ws.column_dimensions[get_column_letter(col_idx)].width = width
+
+    quotas_data = [dict(r) for r in quotas_rows]
+
+    def sort_key(q):
+        niv = q["niveau_etudes"]
+        idx = NIVEAU_ORDER.index(niv) if niv in NIVEAU_ORDER else 99
+        return (idx, q["filiere"])
+
+    quotas_data.sort(key=sort_key)
+
+    current_row = 2
+    total_places = 0
+    total_fav = 0
+    total_restantes = 0
+
+    for niveau, group in groupby(quotas_data, key=lambda q: q["niveau_etudes"]):
+        cell = ws.cell(row=current_row, column=1, value=niveau.upper())
+        cell.font = Font(name="Trebuchet MS", bold=True, size=12)
+        for col_idx in range(1, len(headers) + 1):
+            ws.cell(row=current_row, column=col_idx).fill = niveau_fill
+        ws.merge_cells(
+            start_row=current_row, start_column=1,
+            end_row=current_row, end_column=len(headers),
+        )
+        current_row += 1
+
+        for q in group:
+            key = (q["niveau_etudes"], q["filiere"])
+            fav = fav_counts.get(key, 0)
+            restantes = q["nb_places"] - fav
+
+            total_places += q["nb_places"]
+            total_fav += fav
+            total_restantes += restantes
+
+            ws.cell(row=current_row, column=1, value=q["niveau_etudes"])
+            ws.cell(row=current_row, column=2, value=q["filiere"])
+            ws.cell(row=current_row, column=3, value=q["nb_places"]).alignment = Alignment(horizontal="center")
+            ws.cell(row=current_row, column=4, value=fav).alignment = Alignment(horizontal="center")
+            ws.cell(row=current_row, column=5, value=restantes).alignment = Alignment(horizontal="center")
+            current_row += 1
+
+    # --- Ligne de total ---
+    total_fill = PatternFill(start_color="BFBFBF", end_color="BFBFBF", fill_type="solid")
+    total_font = Font(name="Trebuchet MS", bold=True, size=11)
+    ws.cell(row=current_row, column=2, value="TOTAL").font = total_font
+    for col_idx in range(1, len(headers) + 1):
+        ws.cell(row=current_row, column=col_idx).fill = total_fill
+    ws.cell(row=current_row, column=3, value=total_places).font = total_font
+    ws.cell(row=current_row, column=3).alignment = Alignment(horizontal="center")
+    ws.cell(row=current_row, column=4, value=total_fav).font = total_font
+    ws.cell(row=current_row, column=4).alignment = Alignment(horizontal="center")
+    ws.cell(row=current_row, column=5, value=total_restantes).font = total_font
+    ws.cell(row=current_row, column=5).alignment = Alignment(horizontal="center")
+
+    wb.save(output_path)
     return output_path
 
 
