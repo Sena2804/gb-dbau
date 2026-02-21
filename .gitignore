@@ -19,4 +19,4 @@ build/
 Thumbs.db
 
 cnbau_session.db
-export_decisions_cnbau.*
+export_*
