@@ -195,7 +195,10 @@ with tab_liste:
     for _, row in page_df.iterrows():
         id_demande = row["id_demande"]
         avis = row["avis"]
-        moyenne = float(row.get("moyenne") or 0)
+        try:
+            moyenne = float(row.get("moyenne") or 0)
+        except (ValueError, TypeError):
+            moyenne = 0.0
 
         key_quota = (row["niveau_etudes"], row["filiere"])
         quota_full = quotas.get(key_quota) is not None and fav_counts_local.get(key_quota, 0) >= quotas.get(key_quota)

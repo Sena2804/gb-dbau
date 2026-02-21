@@ -3,8 +3,8 @@ from pathlib import Path
 
 def get_logo_b64():
     """Récupère l'image du logo et la convertit en Base64 une seule fois."""
-    img_path = "assets/image.png"
-    if Path(img_path).exists():
+    img_path = Path(__file__).resolve().parent / "assets" / "image.png"
+    if img_path.exists():
         with open(img_path, "rb") as f:
             return base64.b64encode(f.read()).decode()
     return ""
@@ -19,7 +19,7 @@ def get_colors(light: bool) -> dict:
         "bg_page":       "#ffffff"              if light else "#0e1117",
         "bg_card":       "#f6f8fa"              if light else "#161b22",
         "bg_dark":       "#e1e4e8"              if light else "#21262d",
-        "text_primary":  "#24292f",
+        "text_primary":  "#24292f"              if light else "#e6edf3",
         "text_muted":    "#57606a"              if light else "#8b949e",
         "accent":        "#0969da"              if light else "#6C9FFF",
         "border":        "#d0d7de"              if light else "#30363d",
@@ -44,7 +44,7 @@ def build_css(colors: dict, light: bool) -> str:
         pointer-events: none; /* TRÈS IMPORTANT : permet de cliquer sur les boutons en dessous */
         z-index: 99999; /* Devant tout le monde */
     }}
-    """
+    """ if LOGO_DATA else ""
     light_overrides = '''
     /* --- Streamlit native overrides for light mode --- */
     [data-testid="stApp"] {
@@ -599,6 +599,22 @@ def build_css(colors: dict, light: bool) -> str:
         font-size: 1.05rem !important;
         padding: 0.6rem 0.9rem !important;
         min-height: 44px !important;
+        border: 1px solid var(--border) !important;
+        border-bottom: 1px solid var(--border) !important;
+        border-radius: 8px !important;
+        background-color: var(--bg-page) !important;
+        color: var(--text-primary) !important;
+    }}
+    [data-testid="stTextInput"] input:hover,
+    [data-testid="stNumberInput"] input:hover {{
+        border-color: var(--text-primary) !important;
+        border-bottom-color: var(--text-primary) !important;
+    }}
+    [data-testid="stTextInput"] input:focus,
+    [data-testid="stNumberInput"] input:focus {{
+        border-color: var(--accent) !important;
+        border-bottom-color: var(--accent) !important;
+        box-shadow: 0 0 0 3px rgba(9,105,218,0.15) !important;
     }}
     [data-baseweb="select"] > div {{
         min-height: 44px !important;
@@ -935,27 +951,3 @@ def build_sticky_js(colors: dict) -> str:
 """
 
 
-def get_custom_css():
-    return """
-    <style>
-    .candidate-name { font-weight: 700; color: #1f1f1f; font-size: 1.1rem; margin-bottom: 0; }
-    .candidate-sub { color: #808495; font-size: 0.9rem; margin-top: 3px; }
-    .num-badge {
-        background: #0969da;
-        color: #ffffff;
-        padding: 4px 10px;
-        border-radius: 8px;
-        font-weight: 800;
-        font-size: 1rem;
-    }
-    .moyenne-txt {
-        font-family: 'Courier New', monospace;
-        font-weight: 800;
-        font-size: 1.1rem;
-        color: #0969da;
-        background: rgba(9,105,218,0.08);
-        padding: 3px 10px;
-        border-radius: 5px;
-    }
-    </style>
-    """
