@@ -1,6 +1,16 @@
 import base64
 from pathlib import Path
 
+def get_logo_b64():
+    """Récupère l'image du logo et la convertit en Base64 une seule fois."""
+    img_path = "assets/image.png"
+    if Path(img_path).exists():
+        with open(img_path, "rb") as f:
+            return base64.b64encode(f.read()).decode()
+    return ""
+
+LOGO_DATA = get_logo_b64()
+
 NIVEAU_ORDER = ["Licence", "Master", "Doctorat", "Spécialisation"]
 
 
@@ -19,7 +29,22 @@ def get_colors(light: bool) -> dict:
 
 
 def build_css(colors: dict, light: bool) -> str:
-    """Retourne le bloc HTML <link> + <style> complet pour le thème courant."""
+    watermark_css = f"""
+    [data-testid="stAppViewContainer"]::after {{
+        content: "";
+        position: fixed;
+        top: 0;
+        left: 0;
+        width: 100vw;
+        height: 100vh;
+        background-image: url("data:image/png;base64,{LOGO_DATA}");
+        background-repeat: repeat;
+        background-size: 700px;
+        opacity: 0.04;
+        pointer-events: none; /* TRÈS IMPORTANT : permet de cliquer sur les boutons en dessous */
+        z-index: 99999; /* Devant tout le monde */
+    }}
+    """
     light_overrides = '''
     /* --- Streamlit native overrides for light mode --- */
     [data-testid="stApp"] {
@@ -28,13 +53,6 @@ def build_css(colors: dict, light: bool) -> str:
     [data-testid="stAppViewContainer"] {
         background-color: #ffffff !important;
         color: #24292f !important;
-    }
-    [data-testid="stSidebar"] {
-        background-color: #f6f8fa !important;
-        border-right-color: #d0d7de !important;
-    }
-    [data-testid="stSidebar"] [data-testid="stSidebarContent"] {
-        background-color: #f6f8fa !important;
     }
     [data-testid="stHeader"] {
         background: #ffffff !important;
@@ -72,7 +90,6 @@ def build_css(colors: dict, light: bool) -> str:
         background-color: #0969da !important;
         color: #ffffff !important;
     }
-    /* Icon-only action buttons in the table */
     button[data-testid="stBaseButton-secondary"] {
         background-color: #f6f8fa !important;
         border-color: #d0d7de !important;
@@ -93,7 +110,6 @@ def build_css(colors: dict, light: bool) -> str:
         color: #8c959f !important;
         opacity: 1 !important;
     }
-    /* Selectbox & multiselect */
     [data-baseweb="select"] {
         background-color: #ffffff !important;
     }
@@ -111,7 +127,6 @@ def build_css(colors: dict, light: bool) -> str:
     [data-baseweb="select"] div {
         color: #24292f !important;
     }
-    /* Dropdown menu */
     [data-baseweb="popover"] {
         background-color: #ffffff !important;
         border-color: #d0d7de !important;
@@ -124,7 +139,6 @@ def build_css(colors: dict, light: bool) -> str:
     [data-baseweb="popover"] li[aria-selected="true"] {
         background-color: #f6f8fa !important;
     }
-    /* Multiselect tags */
     [data-baseweb="tag"] {
         background-color: #e1e4e8 !important;
         color: #24292f !important;
@@ -138,10 +152,10 @@ def build_css(colors: dict, light: bool) -> str:
         background-color: transparent !important;
     }
     [data-testid="stProgress"] [role="progressbar"] > div > div > div {
-        background-color: #0969da !important;
+        background-color: #EAC100 !important;
     }
 
-    /* --- Info / success / warning / error boxes --- */
+    /* --- Alert boxes --- */
     [data-testid="stAlert"] {
         background-color: #f6f8fa !important;
         color: #24292f !important;
@@ -152,18 +166,6 @@ def build_css(colors: dict, light: bool) -> str:
     }
     .stAlertContainer div { color: inherit !important; }
     .stAlertContainer p { color: #24292f !important; }
-    /* Success (Favorable) */
-    .stAlertContainer[class*="st-bb"],
-    div[data-testid="stAlert"]:has(.stAlertContainer[class*="st-bb"]) .stAlertContainer {
-        background-color: rgba(22,128,57,0.1) !important;
-        color: #1a7f37 !important;
-    }
-    /* Error (Défavorable) */
-    .stAlertContainer[class*="st-bc"],
-    div[data-testid="stAlert"]:has(.stAlertContainer[class*="st-bc"]) .stAlertContainer {
-        background-color: rgba(207,34,46,0.1) !important;
-        color: #cf222e !important;
-    }
 
     /* --- File uploader --- */
     [data-testid="stFileUploader"] {
@@ -186,7 +188,7 @@ def build_css(colors: dict, light: bool) -> str:
         color: #ffffff !important;
     }
 
-    /* Restore semantic colors that the blanket rule above would override */
+    /* Restore semantic colors */
     .badge-favorable, .badge-favorable .ms { color: #3fb950 !important; }
     .badge-defavorable, .badge-defavorable .ms { color: #f85149 !important; }
     .badge-attente, .badge-attente .ms { color: #8b949e !important; }
@@ -216,7 +218,10 @@ def build_css(colors: dict, light: bool) -> str:
     return f"""
 <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Rounded:opsz,wght,FILL,GRAD@24,400,1,0" rel="stylesheet">
 <style>
-    /* --- Theme variables (driven by Python toggle) --- */
+    {watermark_css}
+    /* ================================================================
+       THEME VARIABLES
+    ================================================================ */
     :root {{
         --bg-page: {colors["bg_page"]};
         --bg-card: {colors["bg_card"]};
@@ -228,117 +233,485 @@ def build_css(colors: dict, light: bool) -> str:
         --border-subtle: {colors["border_subtle"]};
         --shadow: {colors["shadow"]};
     }}
+    
+    
 
-    /* --- Reset & base --- */
-    .block-container {{ padding-top: 1.5rem; max-width: 1200px; }}
-
-    .ms {{ font-family: 'Material Symbols Rounded'; font-size: 20px;
-           vertical-align: middle; margin-right: 6px; font-weight: normal;
-           font-style: normal; display: inline-block; line-height: 1;
-           text-transform: none; letter-spacing: normal; word-wrap: normal;
-           white-space: nowrap; direction: ltr;
-           -webkit-font-smoothing: antialiased; }}
-
-    /* --- Section headers --- */
-    .section-header {{
-        display: flex; align-items: center; gap: 10px;
-        margin-bottom: 0.8rem; margin-top: 0.5rem;
+    /* ================================================================
+       LAYOUT — Respiration généreuse pour grand écran
+    ================================================================ */
+    .block-container {{
+        padding-top: 2.5rem !important;
+        max-width: 100% !important;
+        padding-left: 3rem !important;
+        padding-right: 3rem !important;
+        padding-bottom: 3rem !important;
     }}
-    .section-header .ms {{ font-size: 26px; color: var(--accent); }}
-    .section-header h3 {{ margin: 0; font-size: 1.3rem; font-weight: 600; color: var(--text-primary); }}
 
-    /* --- Page title --- */
+    /* ================================================================
+       MATERIAL SYMBOLS
+    ================================================================ */
+    .ms {{
+        font-family: 'Material Symbols Rounded';
+        font-size: 24px;
+        vertical-align: middle;
+        margin-right: 8px;
+        font-weight: normal;
+        font-style: normal;
+        display: inline-block;
+        line-height: 1;
+        text-transform: none;
+        letter-spacing: normal;
+        word-wrap: normal;
+        white-space: nowrap;
+        direction: ltr;
+        -webkit-font-smoothing: antialiased;
+    }}
+
+    /* ================================================================
+       PAGE TITLE — Grand écran
+    ================================================================ */
     .app-title {{
-        display: flex; align-items: center; gap: 14px;
-        padding-bottom: 1rem; border-bottom: 1px solid var(--border-subtle);
-        margin-bottom: 1.2rem;
+        display: flex;
+        align-items: center;
+        gap: 18px;
+        padding-bottom: 1.5rem;
+        border-bottom: 2px solid var(--border-subtle);
+        margin-bottom: 2rem;
     }}
-    .app-title .ms {{ font-size: 36px; color: var(--accent); }}
-    .app-title h1 {{ margin: 0; font-size: 1.8rem; font-weight: 700; color: var(--text-primary); }}
-    .app-title span.sub {{ font-size: 0.95rem; color: var(--text-muted); font-weight: 400; display: block; }}
+    .app-title .ms {{
+        font-size: 48px;
+        color: var(--accent);
+    }}
+    .app-title h1 {{
+        margin: 0;
+        font-size: 2.4rem;
+        font-weight: 800;
+        color: var(--text-primary);
+        letter-spacing: -0.5px;
+    }}
+    .app-title span.sub {{
+        font-size: 1.1rem;
+        color: var(--text-muted);
+        font-weight: 400;
+        display: block;
+        margin-top: 3px;
+    }}
 
-    /* --- KPI cards --- */
-    .kpi-row {{ display: flex; gap: 12px; margin-bottom: 0.5rem; }}
-    .kpi-card {{
-        flex: 1; background: var(--bg-card); border-radius: 12px; padding: 1.1rem 1rem;
-        text-align: center; border: 1px solid var(--border);
-        transition: border-color 0.2s;
+    /* ================================================================
+       SECTION HEADERS
+    ================================================================ */
+    .section-header {{
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        margin-bottom: 1.5rem;
+        margin-top: 0.8rem;
     }}
-    .kpi-card:hover {{ border-color: var(--accent); }}
-    .kpi-card .kpi-icon {{ font-size: 22px; margin-bottom: 4px; color: var(--text-primary); }}
-    .kpi-card .kpi-value {{ font-size: 2rem; font-weight: 700; margin: 2px 0; color: var(--text-primary); }}
-    .kpi-card .kpi-label {{ font-size: 0.82rem; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.5px; }}
+    .section-header .ms {{
+        font-size: 32px;
+        color: var(--accent);
+    }}
+    .section-header h3 {{
+        margin: 0;
+        font-size: 1.6rem;
+        font-weight: 700;
+        color: var(--text-primary);
+    }}
+
+    /* ================================================================
+       KPI CARDS — Plus grandes, plus lisibles
+    ================================================================ */
+    .kpi-row {{
+        display: flex;
+        gap: 16px;
+        margin-bottom: 1rem;
+    }}
+    .kpi-card {{
+        flex: 1;
+        background: var(--bg-card);
+        border-radius: 16px;
+        padding: 1.8rem 1.4rem;
+        text-align: center;
+        border: 2px solid var(--border);
+        transition: border-color 0.2s, transform 0.15s, box-shadow 0.15s;
+        box-shadow: 0 2px 8px var(--shadow);
+    }}
+    .kpi-card:hover {{
+        border-color: var(--accent);
+        transform: translateY(-2px);
+        box-shadow: 0 6px 20px var(--shadow);
+    }}
+    .kpi-card .kpi-icon {{
+        font-size: 30px;
+        margin-bottom: 8px;
+        color: var(--text-primary);
+    }}
+    .kpi-card .kpi-value {{
+        font-size: 3rem;
+        font-weight: 800;
+        margin: 4px 0;
+        color: var(--text-primary);
+        line-height: 1;
+    }}
+    .kpi-card .kpi-label {{
+        font-size: 0.95rem;
+        color: var(--text-muted);
+        text-transform: uppercase;
+        letter-spacing: 1px;
+        font-weight: 600;
+        margin-top: 6px;
+    }}
     .kpi-card.kpi-green .kpi-icon, .kpi-card.kpi-green .kpi-value {{ color: #3fb950 !important; }}
     .kpi-card.kpi-red .kpi-icon, .kpi-card.kpi-red .kpi-value {{ color: #f85149 !important; }}
     .kpi-card.kpi-muted .kpi-icon, .kpi-card.kpi-muted .kpi-value {{ color: var(--text-muted) !important; }}
     .kpi-card.kpi-blue .kpi-icon, .kpi-card.kpi-blue .kpi-icon .ms,
     .kpi-card.kpi-blue .kpi-value {{ color: #58a6ff !important; }}
 
-    /* --- Number badges --- */
+    /* ================================================================
+       TABS — Plus visibles
+    ================================================================ */
+    [data-testid="stTabs"] [role="tablist"] {{
+        display: flex !important;
+        justify-content: space-between !important;
+        width: 100% !important;
+        gap: 10px !important;
+    }}
+
+    [data-testid="stTabs"] [role="tab"] {{
+        flex: 1 !important;
+        height: auto !important;
+        padding: 1rem 0.5rem !important;
+        font-size: 1.1rem !important;
+        font-weight: 600 !important;
+    }}
+
+    /* Style par défaut (Inactif) */
+    [data-testid="stTabs"] [role="tab"] p {{
+        font-size: 1.5rem !important;
+        font-weight: 700 !important;
+        color: var(--text-primary) !important;
+        transition: color 0.3s ease !important;
+    }}
+
+    [data-testid="stTabs"] [role="tab"] [data-testid="stIconMaterial"] {{
+        font-size: 1.8rem !important;
+        margin-right: 10px !important;
+        transition: color 0.3s ease !important;
+    }}
+
+    /* --- ÉTAT ACTIF : Texte ET Icône en bleu --- */
+    [data-testid="stTabs"] [aria-selected="true"] p,
+    [data-testid="stTabs"] [aria-selected="true"] [data-testid="stIconMaterial"] {{
+        color: var(--accent) !important;
+    }}
+
+    /* Effet au survol pour l'interactivité */
+    [data-testid="stTabs"] [role="tab"]:hover p,
+    [data-testid="stTabs"] [role="tab"]:hover [data-testid="stIconMaterial"] {{
+        color: var(--accent) !important;
+        opacity: 0.8;
+    }}
+
+    /* ================================================================
+       NUMBER BADGES — Plus grands
+    ================================================================ */
     .num-badge {{
-        display: inline-flex; align-items: center; justify-content: center;
-        min-width: 28px; padding: 2px 8px; border-radius: 8px;
-        font-size: 0.85rem; font-weight: 700;
-        background: var(--accent); color: #ffffff;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        min-width: 38px;
+        height: 38px;
+        padding: 2px 10px;
+        border-radius: 10px;
+        font-size: 1rem;
+        font-weight: 800;
+        background: var(--accent);
+        color: #ffffff;
+        box-shadow: 0 2px 6px rgba(9,105,218,0.3);
     }}
 
-    /* --- Status badges --- */
+    /* ================================================================
+       STATUS BADGES — Plus grands, plus lisibles
+    ================================================================ */
     .badge {{
-        display: inline-flex; align-items: center; gap: 4px;
-        padding: 4px 12px; border-radius: 20px; font-size: 0.85rem; font-weight: 600;
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        padding: 6px 16px;
+        border-radius: 24px;
+        font-size: 1rem;
+        font-weight: 700;
     }}
-    .badge .ms {{ font-size: 16px; margin-right: 2px; }}
-    .badge-favorable {{ background: rgba(63,185,80,0.15); color: #3fb950; border: 1px solid rgba(63,185,80,0.3); }}
-    .badge-defavorable {{ background: rgba(248,81,73,0.15); color: #f85149; border: 1px solid rgba(248,81,73,0.3); }}
-    .badge-attente {{ background: rgba(139,148,158,0.15); color: var(--text-muted); border: 1px solid rgba(139,148,158,0.3); }}
-    .badge-suppleant {{ background: rgba(88,166,255,0.15); color: #58a6ff; border: 1px solid rgba(88,166,255,0.3); }}
+    .badge .ms {{ font-size: 18px; margin-right: 3px; }}
+    .badge-favorable  {{ background: rgba(63,185,80,0.15);  color: #3fb950; border: 2px solid rgba(63,185,80,0.4); }}
+    .badge-defavorable{{ background: rgba(248,81,73,0.15);  color: #f85149; border: 2px solid rgba(248,81,73,0.4); }}
+    .badge-attente    {{ background: rgba(139,148,158,0.15);color: var(--text-muted); border: 2px solid rgba(139,148,158,0.4); }}
+    .badge-suppleant  {{ background: rgba(88,166,255,0.15); color: #58a6ff; border: 2px solid rgba(88,166,255,0.4); }}
 
-    /* --- Quota cards --- */
-    .quota-grid {{ display: flex; gap: 10px; flex-wrap: wrap; margin-bottom: 0.8rem; }}
-    .quota-card {{
-        flex: 1; min-width: 160px; border-radius: 10px; padding: 0.75rem 1rem;
-        border: 1px solid var(--border); background: var(--bg-card);
+    /* ================================================================
+       CANDIDATE LIST — Lignes plus aérées
+    ================================================================ */
+    .candidate-name {{
+        font-weight: 700;
+        font-size: 1.1rem;
+        color: var(--text-primary);
+        line-height: 1.3;
     }}
-    .quota-card .quota-filiere {{ font-weight: 600; font-size: 0.9rem; color: var(--text-primary); margin-bottom: 4px; }}
-    .quota-card .quota-bar {{ height: 6px; border-radius: 3px; background: var(--bg-dark); margin: 6px 0; overflow: hidden; }}
-    .quota-card .quota-bar-fill {{ height: 100%; border-radius: 3px; transition: width 0.3s; }}
-    .quota-card .quota-text {{ font-size: 0.8rem; color: var(--text-muted); }}
-    .quota-ok {{ border-color: rgba(9,105,218,0.3); }}
+    .candidate-sub {{
+        color: var(--text-muted);
+        font-size: 0.92rem;
+        margin-top: 3px;
+        font-weight: 500;
+    }}
+    .moyenne-txt {{
+        font-family: 'Courier New', monospace;
+        font-weight: 800;
+        font-size: 1.15rem;
+        color: var(--accent);
+        background: rgba(9,105,218,0.08);
+        padding: 4px 12px;
+        border-radius: 6px;
+        border: 1px solid rgba(9,105,218,0.15);
+    }}
+
+    /* ================================================================
+       QUOTA CARDS
+    ================================================================ */
+    .quota-grid {{
+        display: flex;
+        gap: 14px;
+        flex-wrap: wrap;
+        margin-bottom: 1.2rem;
+    }}
+    .quota-card .quota-filiere {{
+        font-weight: 700;
+        font-size: 1rem;
+        color: var(--text-primary);
+        margin-bottom: 6px;
+    }}
+    
+    .quota-card .quota-bar-fill {{
+        height: 100%;
+        border-radius: 4px;
+        transition: width 0.4s ease;
+    }}
+    
+    .quota-card {{
+        flex: 1;
+        min-width: 220px; /* Légèrement plus large pour accommoder le gros texte */
+        border-radius: 14px;
+        padding: 1.5rem !important; /* Plus de padding interne */
+        border: 2px solid var(--border);
+        background: var(--bg-card);
+        box-shadow: 0 2px 6px var(--shadow);
+    }}
+
+    .quota-card .quota-filiere {{
+        font-weight: 800;
+        font-size: 1.2rem !important; /* Augmenté de 1rem à 1.2rem */
+        color: var(--text-primary);
+        margin-bottom: 10px;
+        line-height: 1.2;
+    }}
+
+    .quota-card .quota-text {{
+        font-size: 1.1rem !important; /* Augmenté de 0.9rem à 1.1rem */
+        color: var(--text-muted);
+        font-weight: 700;
+        margin-top: 8px;
+    }}
+    
+    .quota-card .quota-bar {{
+        height: 12px !important; /* Barre de progression plus épaisse */
+        border-radius: 6px;
+        background: var(--bg-dark);
+        margin: 12px 0;
+        overflow: hidden;
+    }}
+    .quota-ok {{ border-color: rgba(9,105,218,0.35); }}
     .quota-ok .quota-bar-fill {{ background: #0969da; }}
-    .quota-full {{ border-color: rgba(63,185,80,0.4); }}
+    .quota-full {{ border-color: rgba(63,185,80,0.5); }}
     .quota-full .quota-bar-fill {{ background: #3fb950; }}
     .quota-full .quota-text {{ color: #3fb950; }}
 
-    /* --- Candidat info card --- */
+    /* ================================================================
+       CANDIDAT INFO CARD
+    ================================================================ */
     .candidat-card {{
-        background: var(--bg-card); border: 1px solid var(--border); border-radius: 12px;
-        padding: 1.2rem; margin-bottom: 1rem;
+        background: var(--bg-card);
+        border: 2px solid var(--border);
+        border-radius: 16px;
+        padding: 1.8rem;
+        margin-bottom: 1.2rem;
+        box-shadow: 0 4px 12px var(--shadow);
     }}
     .candidat-card table {{ width: 100%; border-collapse: collapse; }}
-    .candidat-card td {{ padding: 6px 8px; font-size: 0.95rem; color: var(--text-primary); border: none; }}
-    .candidat-card td:first-child {{ color: var(--text-muted); font-weight: 500; width: 120px; }}
+    .candidat-card td {{
+        padding: 9px 10px;
+        font-size: 1.05rem;
+        color: var(--text-primary);
+        border: none;
+    }}
+    .candidat-card td:first-child {{
+        color: var(--text-muted);
+        font-weight: 600;
+        width: 140px;
+        font-size: 0.95rem;
+    }}
 
-    /* --- Niveau label --- */
+    /* ================================================================
+       NIVEAU LABEL
+    ================================================================ */
     .niveau-label {{
-        font-size: 0.85rem; font-weight: 600; color: var(--accent);
-        text-transform: uppercase; letter-spacing: 0.8px;
-        margin-bottom: 6px; margin-top: 8px;
+        font-size: 1.4rem !important; /* Augmenté de 1rem à 1.4rem */
+        font-weight: 800;
+        color: var(--accent);
+        text-transform: uppercase;
+        letter-spacing: 2px;
+        margin-bottom: 15px;
+        margin-top: 25px;
+        border-left: 5px solid var(--accent);
+        padding-left: 15px;
     }}
 
-    /* --- Alert quota --- */
+    /* ================================================================
+       ALERT QUOTA
+    ================================================================ */
     .alert-quota {{
-        display: flex; align-items: center; gap: 8px;
-        background: rgba(248,81,73,0.1); border: 1px solid rgba(248,81,73,0.3);
-        border-radius: 8px; padding: 10px 14px; color: #f85149; font-size: 0.9rem;
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        background: rgba(248,81,73,0.1);
+        border: 2px solid rgba(248,81,73,0.35);
+        border-radius: 10px;
+        padding: 14px 18px;
+        color: #f85149;
+        font-size: 1rem;
+        font-weight: 600;
     }}
-    .alert-quota .ms {{ font-size: 20px; }}
+    .alert-quota .ms {{ font-size: 22px; }}
 
-    /* --- Hide default Streamlit header/footer --- */
+    /* ================================================================
+       FORM CONTROLS — Plus grands pour la lisibilité TV
+    ================================================================ */
+    [data-testid="stTextInput"] input,
+    [data-testid="stNumberInput"] input {{
+        font-size: 1.05rem !important;
+        padding: 0.6rem 0.9rem !important;
+        min-height: 44px !important;
+    }}
+    [data-baseweb="select"] > div {{
+        min-height: 44px !important;
+    }}
+    label {{
+        font-size: 1rem !important;
+        font-weight: 600 !important;
+    }}
+
+    /* ================================================================
+       BUTTONS — Taille TV
+    ================================================================ */
+    button[data-testid^="stBaseButton"] {{
+        font-size: 1rem !important;
+        font-weight: 600 !important;
+        min-height: 42px !important;
+        padding: 0.5rem 1rem !important;
+        border-radius: 10px !important;
+    }}
+    button[kind="primary"], button[data-testid="stBaseButton-primary"] {{
+        background-color: #0969da !important;
+        color: #ffffff !important;
+        box-shadow: 0 3px 10px rgba(9,105,218,0.35) !important;
+    }}
+
+    /* ================================================================
+       ACTION BUTTONS — Couleurs par position
+    ================================================================ */
+    div[data-testid="stColumn"]:last-child div[data-testid="stHorizontalBlock"] button {{
+        transition: all 0.2s ease-in-out !important;
+        border: 1px solid transparent !important;
+        background-color: transparent !important;
+        border-radius: 8px !important;
+    }}
+
+    /* Hover commun : léger fond gris et ombre */
+    div[data-testid="stColumn"]:last-child div[data-testid="stHorizontalBlock"] button:hover:not(:disabled) {{
+        transform: translateY(-2px);
+        box-shadow: 0 4px 8px var(--shadow) !important;
+    }}
+
+    /* --- Bouton FAVORABLE (Vert) --- */
+    div[data-testid="stColumn"]:last-child div[data-testid="stHorizontalBlock"] > div[data-testid="stColumn"]:nth-child(1) button span[data-testid="stIconMaterial"] {{
+        color: #3fb950 !important;
+    }}
+    div[data-testid="stColumn"]:last-child div[data-testid="stHorizontalBlock"] > div[data-testid="stColumn"]:nth-child(1) button:hover:not(:disabled) {{
+        background-color: rgba(63, 185, 80, 0.1) !important;
+        border-color: rgba(63, 185, 80, 0.4) !important;
+    }}
+
+    /* --- Bouton DÉFAVORABLE (Rouge) --- */
+    div[data-testid="stColumn"]:last-child div[data-testid="stHorizontalBlock"] > div[data-testid="stColumn"]:nth-child(2) button span[data-testid="stIconMaterial"] {{
+        color: #f85149 !important;
+    }}
+    div[data-testid="stColumn"]:last-child div[data-testid="stHorizontalBlock"] > div[data-testid="stColumn"]:nth-child(2) button:hover:not(:disabled) {{
+        background-color: rgba(248, 81, 73, 0.1) !important;
+        border-color: rgba(248, 81, 73, 0.4) !important;
+    }}
+
+    /* --- Bouton SUPPLÉANT (Bleu) --- */
+    div[data-testid="stColumn"]:last-child div[data-testid="stHorizontalBlock"] > div[data-testid="stColumn"]:nth-child(3) button span[data-testid="stIconMaterial"] {{
+        color: #58a6ff !important;
+    }}
+    div[data-testid="stColumn"]:last-child div[data-testid="stHorizontalBlock"] > div[data-testid="stColumn"]:nth-child(3) button:hover:not(:disabled) {{
+        background-color: rgba(88, 166, 255, 0.1) !important;
+        border-color: rgba(88, 166, 255, 0.4) !important;
+    }}
+
+    /* --- Bouton EN ATTENTE (Orange) --- */
+    div[data-testid="stColumn"]:last-child div[data-testid="stHorizontalBlock"] > div[data-testid="stColumn"]:nth-child(4) button span[data-testid="stIconMaterial"] {{
+        color: #d29922 !important;
+    }}
+    div[data-testid="stColumn"]:last-child div[data-testid="stHorizontalBlock"] > div[data-testid="stColumn"]:nth-child(4) button:hover:not(:disabled) {{
+        background-color: rgba(210, 153, 34, 0.1) !important;
+        border-color: rgba(210, 153, 34, 0.4) !important;
+    }}
+
+    button:disabled {{
+        opacity: 0.22 !important;
+        filter: grayscale(1);
+        cursor: not-allowed !important;
+    }}
+    
+    div[data-testid="stColumn"]:last-child div[data-testid="stHorizontalBlock"] {{
+        gap: 0.5rem !important;
+        align-items: center;
+    }}
+
+    /* ================================================================
+       DIVIDERS — Respiration entre les lignes
+    ================================================================ */
+    [data-testid="stDivider"] hr {{
+        margin: 0.6rem 0 !important;
+        border-width: 1px !important;
+        opacity: 0.5 !important;
+    }}
+
+    /* ================================================================
+       PROGRESS BAR
+    ================================================================ */
+    [data-testid="stProgress"] [role="progressbar"] > div > div > div {{
+        background-color: #0969da !important;
+    }}
+
+    /* ================================================================
+       HIDE DEFAULT HEADER/FOOTER
+    ================================================================ */
     header[data-testid="stHeader"] {{ background: transparent; }}
     .stDeployButton {{ display: none; }}
-    div[data-testid="stDataFrame"] {{ font-size: 1rem; }}
 
-    /* --- Sticky header (appliqué via JS) --- */
+    /* ================================================================
+       STICKY HEADER
+    ================================================================ */
     .sticky-header {{
         position: fixed !important;
         top: 0;
@@ -346,82 +719,69 @@ def build_css(colors: dict, light: bool) -> str:
         right: 0;
         z-index: 999;
         background: var(--bg-page);
-        padding: 1rem 2rem 0.5rem 2rem;
-        border-bottom: 1px solid var(--border);
-        box-shadow: 0 2px 8px var(--shadow);
-    }}
-    .sticky-header .app-title h1 {{ font-size: 1.3rem; }}
-    .sticky-header .app-title .sub {{ display: none; }}
-    .sticky-header .kpi-row {{ margin-bottom: 0; }}
-    .sticky-header .kpi-card {{ padding: 0.5rem 0.6rem; }}
-    .sticky-header .kpi-value {{ font-size: 1.3rem; }}
-
-    /* --- Action buttons: green / red / blue / yellow by position in 4-col block --- */
-    div[data-testid="stColumn"]:last-child div[data-testid="stHorizontalBlock"] > div[data-testid="stColumn"]:nth-child(1) button:not(:disabled) span[data-testid="stIconMaterial"] {{
-        color: #3fb950 !important;
-    }}
-    div[data-testid="stColumn"]:last-child div[data-testid="stHorizontalBlock"] > div[data-testid="stColumn"]:nth-child(2) button:not(:disabled) span[data-testid="stIconMaterial"] {{
-        color: #f85149 !important;
-    }}
-    div[data-testid="stColumn"]:last-child div[data-testid="stHorizontalBlock"] > div[data-testid="stColumn"]:nth-child(3) button:not(:disabled) span[data-testid="stIconMaterial"] {{
-        color: #58a6ff !important;
-    }}
-    div[data-testid="stColumn"]:last-child div[data-testid="stHorizontalBlock"] > div[data-testid="stColumn"]:nth-child(4) button:not(:disabled) span[data-testid="stIconMaterial"] {{
-        color: #d29922 !important;
-    }}
-    /* --- Boutons désactivés : grisés --- */
-    button:disabled {{
-        opacity: 0.25 !important;
-    }}
-    /* --- Réduire l'espacement entre boutons d'action --- */
-    div[data-testid="stColumn"]:last-child div[data-testid="stHorizontalBlock"] {{
-        gap: 0.25rem !important;
-    }}
-    div[data-testid="stColumn"]:last-child div[data-testid="stHorizontalBlock"] > div[data-testid="stColumn"] {{
-        padding: 0 !important;
+        padding: 1rem 3rem 0.6rem 3rem;
+        border-bottom: 2px solid var(--border);
+        box-shadow: 0 2px 12px var(--shadow);
     }}
 
-    /* --- Sidebar --- */
-    section[data-testid="stSidebar"] .stMarkdown h3 {{ font-size: 1.1rem; }}
-    
+    /* ================================================================
+       SIDEBAR
+    ================================================================ */
+    section[data-testid="stSidebar"] .stMarkdown h3 {{
+        font-size: 1.2rem;
+    }}
+    section[data-testid="stSidebar"] p,
+    section[data-testid="stSidebar"] span,
+    section[data-testid="stSidebar"] label {{
+        font-size: 1rem !important;
+    }}
+
+    {light_overrides}
 </style>
 """
 
 
-def get_sidebar_style(img_path, progress_color="#6C9FFF"):
-    img_base64 = ""
-    if Path(img_path).exists():
-        with open(img_path, "rb") as f:
-            img_base64 = base64.b64encode(f.read()).decode()
-
+def get_sidebar_style(progress_color):
     return f"""
     <style>
-    
         [data-testid="stSidebar"] {{
-            background-color: rgba(0, 135, 81, 0.12) !important;
-            backdrop-filter: blur(10px); /* Ajoute un effet de flou premium */
+            background-color: rgba(0, 135, 81, 0.1) !important;
+            backdrop-filter: blur(12px);
         }}
         
-        /* Injection du logo dans le header que tu as inspecté */
         [data-testid="stSidebarHeader"] {{
-            background-image: url("data:image/png;base64,{img_base64}");
+            background-image: url("data:image/png;base64,{LOGO_DATA}");
             background-repeat: no-repeat;
             background-size: contain;
             background-position: center;
-            height: 100px;
-            margin-top: 1rem;
+            height: 120px;
+            margin-bottom: 20px;
         }}
 
-        /* Suppression du bouton de repli pour "verrouiller" la sidebar */
+        /* Ajustement des textes de la sidebar pour qu'ils ressortent sur le vert */
+        [data-testid="stSidebar"] .stMarkdown p {{
+            font-size: 1.2rem !important; /* Augmenté */
+            line-height: 1.4 !important;
+            color: #004d2e !important;
+            font-weight: 600 !important;
+        }}
+
+        /* Augmenter la taille des labels (ex: titres de filtres ou selectbox) */
+        [data-testid="stSidebar"] label {{
+            font-size: 1.1rem !important;
+            color: #004d2e !important;
+            font-weight: 700 !important;
+        }}
+
         [data-testid="stSidebarCollapseButton"] {{
             display: none;
         }}
 
-        /* Ajustement du contenu pour éviter les chevauchements */
         [data-testid="stSidebarContent"] {{
             padding-top: 0rem !important;
+            background-color: transparent !important;
         }}
-        
+
         div[data-testid="stProgress"] > div > div > div > div {{
             background-color: {progress_color} !important;
             transition: background-color 0.5s ease;
@@ -431,25 +791,61 @@ def get_sidebar_style(img_path, progress_color="#6C9FFF"):
             font-weight: 700;
             letter-spacing: 1px;
             text-transform: uppercase;
-            font-size: 0.7rem !important;
-            color: rgba(255, 255, 255, 0.6) !important;
-            margin-top: 1rem;
+            font-size: 1.1rem !important; /* Augmenté de 1rem à 1.1rem */
+            color: rgba(0, 77, 46, 0.7) !important;
+            margin-top: 1.2rem;
         }}
         
+        
+        /* Bouton rouge (Déconnexion) spécifique à la sidebar */
         [data-testid="stSidebar"] button[kind="secondary"] {{
             border: 2px solid #ff4b4b !important;
             color: #ff4b4b !important;
-            background-color: transparent !important;
+            background-color: rgba(255, 255, 255, 0.5) !important;
             transition: all 0.3s ease;
-            border-radius: 8px;
-            margin-top: auto; /* Sécurité supplémentaire */
+            border-radius: 10px;
+            font-size: 1.7rem !important;
+            font-weight: 700 !important;
+            padding: 0.6rem 1rem !important;
+            margin-top: auto;
         }}
 
-        /* Hover : Fond plein rouge et texte blanc */
         [data-testid="stSidebar"] button[kind="secondary"]:hover {{
             background-color: #ff4b4b !important;
             color: white !important;
-            box-shadow: 0 4px 12px rgba(255, 75, 75, 0.3);
+            box-shadow: 0 4px 14px rgba(255, 75, 75, 0.35);
+        }}
+        
+        .sidebar-status-container {{
+            padding: 1rem 0;
+        }}
+        .sidebar-title {{
+            color: #004d2e !important;
+            font-size: 20px !important; /* Augmenté */
+            font-weight: 800 !important;
+            margin-bottom: 1.5rem !important;
+        }}
+        .progression-row {{
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 15px;
+        }}
+        .progression-label {{
+            font-size: 2.5rem !important; /* Très gros */
+            font-weight: 700 !important;
+            color: #004d2e !important;
+        }}
+        .progression-pct {{
+            font-size: 2.5rem !important; /* Encore plus gros */
+            font-weight: 800 !important;
+            color: #0969da !important;
+        }}
+        .progression-sub {{
+            font-size: 1.2rem !important;
+            color: #004d2e !important;
+            opacity: 0.8;
+            font-weight: 500;
         }}
     </style>
     """
@@ -472,24 +868,26 @@ def build_sticky_js(colors: dict) -> str:
     header.id = 'sticky-clone';
     header.style.cssText = `
         position: fixed; top: 0; left: 0; right: 0; z-index: 9999999;
-        background: {colors["bg_page"]}; padding: 0.8rem 2rem 0.5rem 2rem;
-        border-bottom: 1px solid {colors["border"]};
-        box-shadow: 0 2px 8px {colors["shadow"]};
+        background: {colors["bg_page"]}; padding: 0.8rem 3rem 0.5rem 3rem;
+        border-bottom: 2px solid {colors["border"]};
+        box-shadow: 0 2px 10px {colors["shadow"]};
         display: none;
     `;
     header.innerHTML = `
-        <div style="display:flex;align-items:center;gap:10px;margin-bottom:0.5rem">
-            <span class="ms" style="font-size:24px;color:{colors["accent"]};font-family:'Material Symbols Rounded'">school</span>
-            <span style="font-size:1.2rem;font-weight:700;color:{colors["text_primary"]}">CNBAU — Bourse de Russie</span>
+        <div style="display:flex;align-items:center;gap:12px;margin-bottom:0.5rem">
+            <span class="ms" style="font-size:28px;color:{colors["accent"]};font-family:'Material Symbols Rounded'">school</span>
+            <span style="font-size:1.4rem;font-weight:800;color:{colors["text_primary"]}">CNBAU — Bourse de Russie</span>
         </div>
     `;
     const kpiClone = kpiEl.cloneNode(true);
     kpiClone.removeAttribute('id');
     kpiClone.querySelectorAll('.kpi-card').forEach(c => {{
-        c.style.padding = '0.4rem 0.5rem';
+        c.style.padding = '0.5rem 0.7rem';
     }});
     kpiClone.querySelectorAll('.kpi-value').forEach(v => {{
-        v.style.fontSize = '1.2rem';
+        v.style.fontSize = '2.5rem';  // Taille massive pour les chiffres
+        v.style.fontWeight = '900';
+        v.style.color = '{colors["accent"]}';
     }});
     header.appendChild(kpiClone);
     const stApp = doc.querySelector('[data-testid="stApp"]') || doc.body;
@@ -524,10 +922,10 @@ def build_sticky_js(colors: dict) -> str:
         const newClone = freshKpi.cloneNode(true);
         newClone.removeAttribute('id');
         newClone.querySelectorAll('.kpi-card').forEach(c => {{
-            c.style.padding = '0.4rem 0.5rem';
+            c.style.padding = '0.5rem 0.7rem';
         }});
         newClone.querySelectorAll('.kpi-value').forEach(v => {{
-            v.style.fontSize = '1.2rem';
+            v.style.fontSize = '1.4rem';
         }});
         header.appendChild(newClone);
     }});
@@ -535,3 +933,29 @@ def build_sticky_js(colors: dict) -> str:
 }})();
 </script>
 """
+
+
+def get_custom_css():
+    return """
+    <style>
+    .candidate-name { font-weight: 700; color: #1f1f1f; font-size: 1.1rem; margin-bottom: 0; }
+    .candidate-sub { color: #808495; font-size: 0.9rem; margin-top: 3px; }
+    .num-badge {
+        background: #0969da;
+        color: #ffffff;
+        padding: 4px 10px;
+        border-radius: 8px;
+        font-weight: 800;
+        font-size: 1rem;
+    }
+    .moyenne-txt {
+        font-family: 'Courier New', monospace;
+        font-weight: 800;
+        font-size: 1.1rem;
+        color: #0969da;
+        background: rgba(9,105,218,0.08);
+        padding: 3px 10px;
+        border-radius: 5px;
+    }
+    </style>
+    """
