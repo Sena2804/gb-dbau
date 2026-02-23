@@ -2,6 +2,7 @@
 
 import io
 import json
+import re
 import sqlite3
 from pathlib import Path
 
@@ -16,6 +17,8 @@ NIVEAU_MAP = {
     "SPECIALITE": "Spécialisation",
     "SPÉCIALISATION": "Spécialisation",
     "SPECIALISATION": "Spécialisation",
+    "SPECIALITE MEDICALE": "Spécialisation",
+    "SPÉCIALITÉ MÉDICALE": "Spécialisation",
 }
 
 # Politique de gestion des doublons par catégorie.
@@ -69,6 +72,27 @@ def _normalize_niveau(raw: str) -> str:
     return NIVEAU_MAP.get(key, raw.strip().title())
 
 
+def _normalize_filiere(name: str) -> str:
+    """Normalise les espaces multiples dans un nom de filière."""
+    return re.sub(r'\s+', ' ', name).strip()
+
+
+def _build_filiere_lookup() -> dict:
+    """Construit un index {clé_normalisée: nom_json} depuis quotas.json pour matcher
+    les noms de filières indépendamment de la casse et des espaces."""
+    quotas_path = Path(__file__).resolve().parent / "quotas.json"
+    if not quotas_path.exists():
+        return {}
+    with open(quotas_path, "r", encoding="utf-8") as f:
+        data = json.load(f)
+    lookup = {}
+    for filieres in data.values():
+        for fil in filieres:
+            key = _normalize_filiere(fil).lower()
+            lookup[key] = fil
+    return lookup
+
+
 def _parse_real_excel(excel_path: str) -> list[dict]:
     """Parse le fichier CNaBAU structuré avec lignes de séparation niveau/filière."""
     from openpyxl import load_workbook
@@ -76,6 +100,7 @@ def _parse_real_excel(excel_path: str) -> list[dict]:
     wb = load_workbook(excel_path, data_only=True)
     ws = wb.active
 
+    filiere_lookup = _build_filiere_lookup()
     current_niveau = ""
     current_filiere = ""
     candidates = []
@@ -97,9 +122,15 @@ def _parse_real_excel(excel_path: str) -> list[dict]:
         val_lower = val_a.lower()
         if val_lower.startswith("filiere") or val_lower.startswith("filière"):
             if ":" in val_a:
-                current_filiere = val_a.split(":", 1)[-1].strip()
+                raw_fil = val_a.split(":", 1)[-1].strip()
             else:
-                current_filiere = val_a
+                raw_fil = val_a
+            # Nettoyer : enlever "(N bourses)" puis "- code", normaliser les espaces
+            raw_fil = re.sub(r'\(\s*\d+\s*bourses?\)', '', raw_fil).strip()
+            raw_fil = re.sub(r'\s*-\s*[\d.]+\s*$', '', raw_fil).strip()
+            raw_fil = _normalize_filiere(raw_fil)
+            # Matcher avec le nom officiel du JSON (casse de référence)
+            current_filiere = filiere_lookup.get(raw_fil.lower(), raw_fil)
             continue
 
         # Ligne de données : la colonne A doit être un numéro
