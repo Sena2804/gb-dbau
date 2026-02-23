@@ -215,6 +215,9 @@ def build_css(colors: dict, light: bool) -> str:
     #sticky-clone .kpi-blue .kpi-icon .ms, #sticky-clone .kpi-blue .kpi-value { color: #0969da !important; }
     .export-card-title { color: #24292f !important; }
     .export-card-desc { color: #57606a !important; }
+    .transfer-card { background: #f6f8fa !important; border-color: #d0d7de !important; }
+    .transfer-summary { background: #e1e4e8 !important; }
+    .transfer-summary-title { color: #24292f !important; }
     ''' if light else ''
 
     return f"""
@@ -607,6 +610,28 @@ def build_css(colors: dict, light: bool) -> str:
         margin-top: 25px;
         border-left: 5px solid var(--accent);
         padding-left: 15px;
+    }}
+
+    /* ================================================================
+       TRANSFER CARD (Réallocation)
+    ================================================================ */
+    .transfer-card {{
+        background: var(--bg-card);
+        border: 2px solid var(--border);
+        border-radius: 14px;
+        padding: 1.5rem;
+    }}
+    .transfer-summary {{
+        background: var(--bg-dark);
+        border-radius: 10px;
+        padding: 1rem;
+        margin-top: 1rem;
+    }}
+    .transfer-summary-title {{
+        font-weight: 700;
+        font-size: 1rem;
+        margin-bottom: 8px;
+        color: var(--text-primary);
     }}
 
     /* ================================================================

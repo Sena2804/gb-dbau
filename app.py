@@ -1,5 +1,4 @@
 from pathlib import Path
-import json
 
 import streamlit as st
 import streamlit.components.v1 as components
@@ -95,9 +94,10 @@ tab_titles = [
     ":material/description: Liste des candidatures",
     ":material/leaderboard: Suivi des quotas",
     ":material/gavel: Examen individuel",
-    ":material/download: Export"
+    ":material/swap_horiz: Réallocation",
+    ":material/download: Export",
 ]
-tab_liste, tab_quotas, tab_eval, tab_export = st.tabs(tab_titles)
+tab_liste, tab_quotas, tab_eval, tab_realloc, tab_export = st.tabs(tab_titles)
 
 # ===========================================================================
 # ONGLET 1 — LISTE DES CANDIDATURES
@@ -450,7 +450,161 @@ with tab_eval:
                             st.rerun()
 
 # ===========================================================================
-# ONGLET 4 — EXPORT
+# ONGLET 4 — RÉALLOCATION DES QUOTAS
+# ===========================================================================
+
+with tab_realloc:
+    from datetime import datetime
+
+    st.markdown("<div style='height:1rem'></div>", unsafe_allow_html=True)
+    st.markdown(section_header("swap_horiz", "Réallocation des quotas"), unsafe_allow_html=True)
+    st.caption(
+        "Transférez des places inutilisées d'une filière vers une autre. "
+        "Le total de 150 bourses reste toujours inchangé."
+    )
+    st.markdown("<div style='height:0.5rem'></div>", unsafe_allow_html=True)
+
+    # Indicateur global
+    total_quota = db.get_total_quota()
+    st.markdown(
+        f'<div class="transfer-summary">'
+        f'<div class="transfer-summary-title">Total des bourses : {total_quota} / 150</div>'
+        f'</div>',
+        unsafe_allow_html=True,
+    )
+    st.markdown("<div style='height:1rem'></div>", unsafe_allow_html=True)
+
+    # Données pour les selectbox
+    realloc_quotas = db.get_quotas()
+    realloc_fav = db.get_favorables_count()
+
+    # Construire les listes par niveau
+    niveaux_with_quotas = sorted(
+        {k[0] for k in realloc_quotas},
+        key=lambda x: NIVEAU_ORDER.index(x) if x in NIVEAU_ORDER else 99,
+    )
+
+    st.markdown('<div class="transfer-card">', unsafe_allow_html=True)
+
+    # --- Sélection niveau / filière HORS du form pour réactivité ---
+    col_src, col_dest = st.columns(2, gap="large")
+
+    with col_src:
+        st.markdown("**Source — retirer des places**")
+        src_niveau = st.selectbox(
+            "Niveau (source)",
+            niveaux_with_quotas,
+            key="src_niveau",
+        )
+        # Filières de la source ayant des places disponibles > 0
+        src_filieres = []
+        for (niv, fil), places in sorted(realloc_quotas.items(), key=lambda x: x[0][1]):
+            if niv == src_niveau:
+                fav_count = realloc_fav.get((niv, fil), 0)
+                dispo = places - fav_count
+                if dispo > 0:
+                    src_filieres.append(fil)
+
+        src_filiere = st.selectbox(
+            "Filière (source)",
+            src_filieres if src_filieres else ["— aucune filière disponible —"],
+            key="src_filiere",
+        )
+
+        # Info source
+        if src_filieres and src_filiere in src_filieres:
+            src_key = (src_niveau, src_filiere)
+            src_places = realloc_quotas.get(src_key, 0)
+            src_fav = realloc_fav.get(src_key, 0)
+            src_dispo = src_places - src_fav
+            st.info(f"Quota actuel : **{src_places}** | Favorables : **{src_fav}** | Disponibles : **{src_dispo}**")
+        else:
+            src_dispo = 0
+            st.warning("Aucune filière avec des places disponibles pour ce niveau.")
+
+    with col_dest:
+        st.markdown("**Destination — ajouter des places**")
+        dest_niveau = st.selectbox(
+            "Niveau (destination)",
+            niveaux_with_quotas,
+            key="dest_niveau",
+        )
+        # Filières de la destination (exclure la source si même niveau)
+        dest_filieres = []
+        for (niv, fil), places in sorted(realloc_quotas.items(), key=lambda x: x[0][1]):
+            if niv == dest_niveau:
+                if dest_niveau == src_niveau and fil == src_filiere:
+                    continue
+                dest_filieres.append(fil)
+
+        dest_filiere = st.selectbox(
+            "Filière (destination)",
+            dest_filieres if dest_filieres else ["— aucune filière —"],
+            key="dest_filiere",
+        )
+
+        # Info destination
+        if dest_filieres and dest_filiere in dest_filieres:
+            dest_key = (dest_niveau, dest_filiere)
+            dest_places = realloc_quotas.get(dest_key, 0)
+            dest_fav = realloc_fav.get(dest_key, 0)
+            st.info(f"Quota actuel : **{dest_places}** | Favorables : **{dest_fav}**")
+
+    # --- Nombre de places + bouton dans un form pour éviter les reruns accidentels ---
+    with st.form("transfer_form"):
+        nb_transfer = st.number_input(
+            "Nombre de places à transférer",
+            min_value=1,
+            max_value=max(src_dispo, 1),
+            value=1,
+            key="nb_transfer",
+        )
+        submitted = st.form_submit_button("Transférer", type="primary", icon=":material/swap_horiz:")
+
+    st.markdown('</div>', unsafe_allow_html=True)
+
+    if submitted:
+        if not src_filieres or src_filiere not in src_filieres:
+            st.error("La filière source n'a pas de places disponibles.")
+        elif not dest_filieres or dest_filiere not in dest_filieres:
+            st.error("Veuillez sélectionner une filière de destination valide.")
+        else:
+            result = db.transfer_quota(
+                src_niveau, src_filiere,
+                dest_niveau, dest_filiere,
+                nb_transfer,
+            )
+            if result["success"]:
+                # Log dans la session
+                if "transfer_log" not in st.session_state:
+                    st.session_state["transfer_log"] = []
+                st.session_state["transfer_log"].append({
+                    "source": f"{src_filiere} ({src_niveau})",
+                    "destination": f"{dest_filiere} ({dest_niveau})",
+                    "places": nb_transfer,
+                    "horodatage": datetime.now().strftime("%H:%M:%S"),
+                })
+                st.success(
+                    f"Transfert effectué : **{nb_transfer}** place(s) de "
+                    f"*{src_filiere}* → *{dest_filiere}*. "
+                    f"Nouveau quota source : {result['source_nouveau']}, "
+                    f"destination : {result['dest_nouveau']}."
+                )
+                st.rerun()
+            else:
+                st.error(f"Échec du transfert : {result['error']}")
+
+    # Historique des transferts de la session
+    if st.session_state.get("transfer_log"):
+        st.markdown("<div style='height:1.5rem'></div>", unsafe_allow_html=True)
+        st.markdown(section_header("history", "Historique des transferts (session)"), unsafe_allow_html=True)
+        import pandas as _pd
+        log_df = _pd.DataFrame(st.session_state["transfer_log"])
+        log_df.columns = ["Source", "Destination", "Places", "Heure"]
+        st.dataframe(log_df, use_container_width=True, hide_index=True)
+
+# ===========================================================================
+# ONGLET 5 — EXPORT
 # ===========================================================================
 
 with tab_export:
@@ -600,10 +754,7 @@ components.html(build_sticky_js(COLORS), height=0)
 # ---------------------------------------------------------------------------
 
 with st.sidebar:
-    with open("quotas.json", "r", encoding="utf-8") as f:
-        quotas_data = json.load(f)
-
-    total = sum(sum(cat.values()) for cat in quotas_data.values())
+    total = sum(quotas.values())
 
     progression = stats["favorables"] / total if total > 0 else 0
     pct = int(progression * 100)

@@ -843,6 +843,83 @@ def export_quotas_to_xlsx(output_path: str) -> str:
     return output_path
 
 
+def get_total_quota() -> int:
+    """Retourne la somme totale de tous les quotas."""
+    conn = get_connection()
+    total = conn.execute("SELECT COALESCE(SUM(nb_places), 0) FROM quotas").fetchone()[0]
+    conn.close()
+    return total
+
+
+def transfer_quota(source_niveau: str, source_filiere: str,
+                   dest_niveau: str, dest_filiere: str,
+                   nb_places: int) -> dict:
+    """Transfère nb_places de la source vers la destination de manière transactionnelle."""
+    if nb_places <= 0:
+        return {"success": False, "error": "Le nombre de places doit être supérieur à 0."}
+
+    if source_niveau == dest_niveau and source_filiere == dest_filiere:
+        return {"success": False, "error": "La source et la destination doivent être différentes."}
+
+    conn = get_connection()
+    try:
+        # Lire le quota source
+        row_src = conn.execute(
+            "SELECT nb_places FROM quotas WHERE niveau_etudes = ? AND filiere = ?",
+            (source_niveau, source_filiere),
+        ).fetchone()
+        if not row_src:
+            return {"success": False, "error": f"Quota source introuvable ({source_niveau}, {source_filiere})."}
+
+        quota_source = row_src["nb_places"]
+
+        # Compter les favorables déjà attribués à la source
+        fav_row = conn.execute(
+            "SELECT COUNT(*) as n FROM candidatures WHERE avis = 'Favorable' AND niveau_etudes = ? AND filiere = ?",
+            (source_niveau, source_filiere),
+        ).fetchone()
+        fav_source = fav_row["n"]
+
+        disponibles = quota_source - fav_source
+        if nb_places > disponibles:
+            return {
+                "success": False,
+                "error": f"Places disponibles insuffisantes. Quota : {quota_source}, Favorables : {fav_source}, Disponibles : {disponibles}.",
+            }
+
+        # Lire le quota destination
+        row_dest = conn.execute(
+            "SELECT nb_places FROM quotas WHERE niveau_etudes = ? AND filiere = ?",
+            (dest_niveau, dest_filiere),
+        ).fetchone()
+        if not row_dest:
+            return {"success": False, "error": f"Quota destination introuvable ({dest_niveau}, {dest_filiere})."}
+
+        quota_dest = row_dest["nb_places"]
+
+        # Transaction : retirer de la source, ajouter à la destination
+        conn.execute(
+            "UPDATE quotas SET nb_places = nb_places - ? WHERE niveau_etudes = ? AND filiere = ?",
+            (nb_places, source_niveau, source_filiere),
+        )
+        conn.execute(
+            "UPDATE quotas SET nb_places = nb_places + ? WHERE niveau_etudes = ? AND filiere = ?",
+            (nb_places, dest_niveau, dest_filiere),
+        )
+        conn.commit()
+
+        return {
+            "success": True,
+            "source_nouveau": quota_source - nb_places,
+            "dest_nouveau": quota_dest + nb_places,
+        }
+    except Exception as e:
+        conn.rollback()
+        return {"success": False, "error": str(e)}
+    finally:
+        conn.close()
+
+
 def is_db_loaded() -> bool:
     if not Path(DB_PATH).exists():
         return False
