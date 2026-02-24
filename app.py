@@ -178,7 +178,7 @@ with tab_liste:
     page_df = filtered_df.iloc[(page - 1) * PAGE_SIZE : page * PAGE_SIZE]
 
     # En-tête du tableau — proportions ajustées pour plus de lisibilité
-    h_cols = st.columns([0.6, 2.5, 1.5, 2.0, 1.0, 1.8, 2.2])
+    h_cols = st.columns([0.6, 2.5, 1, 2.0, 3.0, 1.8, 2.2])
     labels = ["N°", "Candidat", "Niveau", "Filière", "Moy.", "Statut", "Actions"]
 
     for col, label in zip(h_cols, labels):
@@ -206,7 +206,7 @@ with tab_liste:
 
         with st.container():
             # On utilise les mêmes ratios que l'en-tête
-            cols = st.columns([0.6, 2.5, 1.5, 2.0, 1.0, 1.8, 2.2])
+            cols = st.columns([0.6, 2.5, 1.5, 2.0, 2.0, 1.8, 2.2])
 
             # 1. Numéro
             cols[0].markdown(
