@@ -196,7 +196,8 @@ with tab_liste:
         id_demande = row["id_demande"]
         avis = row["avis"]
         try:
-            moyenne = float(row.get("moyenne") or 0)
+            raw_moy = str(row.get("moyenne") or 0).replace(",", ".")
+            moyenne = float(raw_moy)
         except (ValueError, TypeError):
             moyenne = 0.0
 
