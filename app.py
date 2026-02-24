@@ -18,7 +18,7 @@ from ui_helper import (
 # Configuration
 # ---------------------------------------------------------------------------
 
-st.set_page_config(page_title="CNBAU - Bourse de Russie", layout="wide")
+st.set_page_config(page_title="CNaBAU - Bourse de Russie", layout="wide")
 
 PAGE_SIZE = 15
 ID_RUSSE_PREFIX = "BEN-"
@@ -44,7 +44,7 @@ st.markdown("""
 <div class="app-title">
     <span class="ms" style="font-size:48px">school</span>
     <div>
-        <h1>CNBAU — Bourse de Russie</h1>
+        <h1>CNaBAU — Bourse de Russie</h1>
         <span class="sub">Session de la Commission Nationale des Bourses et Aides Universitaires</span>
     </div>
 </div>
@@ -465,7 +465,7 @@ with tab_realloc:
     st.markdown("<div style='height:0.5rem'></div>", unsafe_allow_html=True)
 
     # Indicateur global
-    total_quota = db.get_total_quota()
+    total_quota = sum(db.get_quotas().values())
     st.markdown(
         f'<div class="transfer-summary">'
         f'<div class="transfer-summary-title">Total des bourses : {total_quota} / 150</div>'
