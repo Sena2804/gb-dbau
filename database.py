@@ -1,6 +1,8 @@
 """Module de gestion SQLite pour les candidatures CNBAU."""
 
+import io
 import json
+import re
 import sqlite3
 from pathlib import Path
 
@@ -15,6 +17,8 @@ NIVEAU_MAP = {
     "SPECIALITE": "Spécialisation",
     "SPÉCIALISATION": "Spécialisation",
     "SPECIALISATION": "Spécialisation",
+    "SPECIALITE MEDICALE": "Spécialisation",
+    "SPÉCIALITÉ MÉDICALE": "Spécialisation",
 }
 
 # Politique de gestion des doublons par catégorie.
@@ -43,6 +47,7 @@ def init_db():
             name TEXT NOT NULL,
             date_lieu_naissance TEXT,
             diplome_filiere_annee TEXT,
+            moyenne TEXT,
             observation TEXT,
             filiere TEXT NOT NULL,
             niveau_etudes TEXT NOT NULL,
@@ -67,6 +72,27 @@ def _normalize_niveau(raw: str) -> str:
     return NIVEAU_MAP.get(key, raw.strip().title())
 
 
+def _normalize_filiere(name: str) -> str:
+    """Normalise les espaces multiples dans un nom de filière."""
+    return re.sub(r'\s+', ' ', name).strip()
+
+
+def _build_filiere_lookup() -> dict:
+    """Construit un index {clé_normalisée: nom_json} depuis quotas.json pour matcher
+    les noms de filières indépendamment de la casse et des espaces."""
+    quotas_path = Path(__file__).resolve().parent / "quotas.json"
+    if not quotas_path.exists():
+        return {}
+    with open(quotas_path, "r", encoding="utf-8") as f:
+        data = json.load(f)
+    lookup = {}
+    for filieres in data.values():
+        for fil in filieres:
+            key = _normalize_filiere(fil).lower()
+            lookup[key] = fil
+    return lookup
+
+
 def _parse_real_excel(excel_path: str) -> list[dict]:
     """Parse le fichier CNaBAU structuré avec lignes de séparation niveau/filière."""
     from openpyxl import load_workbook
@@ -74,6 +100,7 @@ def _parse_real_excel(excel_path: str) -> list[dict]:
     wb = load_workbook(excel_path, data_only=True)
     ws = wb.active
 
+    filiere_lookup = _build_filiere_lookup()
     current_niveau = ""
     current_filiere = ""
     candidates = []
@@ -95,9 +122,15 @@ def _parse_real_excel(excel_path: str) -> list[dict]:
         val_lower = val_a.lower()
         if val_lower.startswith("filiere") or val_lower.startswith("filière"):
             if ":" in val_a:
-                current_filiere = val_a.split(":", 1)[-1].strip()
+                raw_fil = val_a.split(":", 1)[-1].strip()
             else:
-                current_filiere = val_a
+                raw_fil = val_a
+            # Nettoyer : enlever "(N bourses)" puis "- code", normaliser les espaces
+            raw_fil = re.sub(r'\(\s*\d+\s*bourses?\)', '', raw_fil).strip()
+            raw_fil = re.sub(r'\s*-\s*[\d.]+\s*$', '', raw_fil).strip()
+            raw_fil = _normalize_filiere(raw_fil)
+            # Matcher avec le nom officiel du JSON (casse de référence)
+            current_filiere = filiere_lookup.get(raw_fil.lower(), raw_fil)
             continue
 
         # Ligne de données : la colonne A doit être un numéro
@@ -124,6 +157,7 @@ def _parse_real_excel(excel_path: str) -> list[dict]:
             "name": cell_str(3),
             "date_lieu_naissance": cell_str(4),
             "diplome_filiere_annee": cell_str(5),
+            "moyenne": cell_str(6),
             "observation": cell_str(7),
             "filiere": current_filiere,
             "niveau_etudes": current_niveau,
@@ -208,10 +242,10 @@ def _load_real_excel(excel_path: str) -> int:
         conn.execute(
             """INSERT OR REPLACE INTO candidatures
                (id_demande, id_russe, numero, sexe, name, date_lieu_naissance,
-                diplome_filiere_annee, observation, filiere, niveau_etudes, avis)
-               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                diplome_filiere_annee, moyenne, observation, filiere, niveau_etudes, avis)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
             (c["id_demande"], c["id_russe"], c["numero"], c["sexe"], c["name"],
-             c["date_lieu_naissance"], c["diplome_filiere_annee"],
+             c["date_lieu_naissance"], c["diplome_filiere_annee"], c["moyenne"],
              c["observation"], c["filiere"], c["niveau_etudes"], c["avis"]),
         )
     conn.commit()
@@ -353,40 +387,107 @@ def get_stats() -> dict:
     defavorables = conn.execute(
         "SELECT COUNT(*) FROM candidatures WHERE avis = 'Défavorable'"
     ).fetchone()[0]
+    suppleants = conn.execute(
+        "SELECT COUNT(*) FROM candidatures WHERE avis = 'Suppléant'"
+    ).fetchone()[0]
     conn.close()
     return {
         "total": total,
-        "traites": favorables + defavorables,
+        "traites": favorables + defavorables + suppleants,
         "favorables": favorables,
         "defavorables": defavorables,
-        "restants": total - favorables - defavorables,
+        "suppleants": suppleants,
+        "restants": total - favorables - defavorables - suppleants,
     }
 
 
 def export_to_excel(output_path: str) -> str:
-    """Exporte les candidatures triées par numéro de demande."""
+    """Exporte les candidatures avec structure hiérarchique."""
+    niveau_order = ["Licence", "Master", "Doctorat", "Spécialisation"]
     df = get_all_candidatures()
-    df = df.drop(columns=["id_demande"])
-    df = df.sort_values("numero")
-    col_order = [
-        "numero", "sexe", "id_russe", "name", "date_lieu_naissance",
-        "diplome_filiere_annee", "observation", "filiere", "niveau_etudes", "avis",
-    ]
-    df = df[[c for c in col_order if c in df.columns]]
-    df = df.rename(columns={
-        "numero": "NUMÉRO",
-        "sexe": "SEXE",
-        "id_russe": "ID RUSSE",
-        "name": "NOM & PRÉNOM",
-        "date_lieu_naissance": "DATE & LIEU DE NAISSANCE",
-        "diplome_filiere_annee": "DIPLÔME, FILIÈRE & ANNÉE",
-        "observation": "OBSERVATION",
-        "filiere": "FILIÈRE",
-        "niveau_etudes": "NIVEAU D'ÉTUDES",
-        "avis": "AVIS",
-    })
+    df["niveau_order"] = df["niveau_etudes"].map(
+        {v: i for i, v in enumerate(niveau_order)}
+    )
+    df = df.sort_values(["niveau_order", "filiere", "numero"]).drop(columns=["niveau_order"])
     df.to_excel(output_path, index=False, engine="openpyxl")
     return output_path
+
+
+def get_total_quota() -> int:
+    """Retourne la somme totale de tous les quotas."""
+    conn = get_connection()
+    total = conn.execute("SELECT COALESCE(SUM(nb_places), 0) FROM quotas").fetchone()[0]
+    conn.close()
+    return total
+
+
+def transfer_quota(source_niveau: str, source_filiere: str,
+                   dest_niveau: str, dest_filiere: str,
+                   nb_places: int) -> dict:
+    """Transfère nb_places de la source vers la destination de manière transactionnelle."""
+    if nb_places <= 0:
+        return {"success": False, "error": "Le nombre de places doit être supérieur à 0."}
+
+    if source_niveau == dest_niveau and source_filiere == dest_filiere:
+        return {"success": False, "error": "La source et la destination doivent être différentes."}
+
+    conn = get_connection()
+    try:
+        # Lire le quota source
+        row_src = conn.execute(
+            "SELECT nb_places FROM quotas WHERE niveau_etudes = ? AND filiere = ?",
+            (source_niveau, source_filiere),
+        ).fetchone()
+        if not row_src:
+            return {"success": False, "error": f"Quota source introuvable ({source_niveau}, {source_filiere})."}
+
+        quota_source = row_src["nb_places"]
+
+        # Compter les favorables déjà attribués à la source
+        fav_row = conn.execute(
+            "SELECT COUNT(*) as n FROM candidatures WHERE avis = 'Favorable' AND niveau_etudes = ? AND filiere = ?",
+            (source_niveau, source_filiere),
+        ).fetchone()
+        fav_source = fav_row["n"]
+
+        disponibles = quota_source - fav_source
+        if nb_places > disponibles:
+            return {
+                "success": False,
+                "error": f"Places disponibles insuffisantes. Quota : {quota_source}, Favorables : {fav_source}, Disponibles : {disponibles}.",
+            }
+
+        # Lire le quota destination
+        row_dest = conn.execute(
+            "SELECT nb_places FROM quotas WHERE niveau_etudes = ? AND filiere = ?",
+            (dest_niveau, dest_filiere),
+        ).fetchone()
+        if not row_dest:
+            return {"success": False, "error": f"Quota destination introuvable ({dest_niveau}, {dest_filiere})."}
+
+        quota_dest = row_dest["nb_places"]
+
+        # Transaction : retirer de la source, ajouter à la destination
+        conn.execute(
+            "UPDATE quotas SET nb_places = nb_places - ? WHERE niveau_etudes = ? AND filiere = ?",
+            (nb_places, source_niveau, source_filiere),
+        )
+        conn.execute(
+            "UPDATE quotas SET nb_places = nb_places + ? WHERE niveau_etudes = ? AND filiere = ?",
+            (nb_places, dest_niveau, dest_filiere),
+        )
+        conn.commit()
+
+        return {
+            "success": True,
+            "source_nouveau": quota_source - nb_places,
+            "dest_nouveau": quota_dest + nb_places,
+        }
+    except Exception as e:
+        conn.rollback()
+        return {"success": False, "error": str(e)}
+    finally:
+        conn.close()
 
 
 def is_db_loaded() -> bool:
