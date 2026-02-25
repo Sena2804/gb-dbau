@@ -31,7 +31,7 @@ ID_RUSSE_SUFFIX = "/26"
 if "_theme" not in st.session_state:
     st.session_state["_theme"] = "light"
 
-light = st.session_state["_theme"] == "light"
+light  = st.session_state["_theme"] == "light"
 COLORS = get_colors(light)
 
 st.markdown(build_css(COLORS, light), unsafe_allow_html=True)
@@ -51,7 +51,7 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 # ---------------------------------------------------------------------------
-# Initialisation BDD — chargement des données
+# Initialisation BDD
 # ---------------------------------------------------------------------------
 
 db.init_db()
@@ -72,15 +72,68 @@ if not db.is_db_loaded():
     st.stop()
 
 # ---------------------------------------------------------------------------
-# Données globales
+# ✅ OPTIMISATION : fonctions de chargement cachées (TTL 2s)
+# Les données sont rechargées au maximum toutes les 2 secondes, pas à chaque
+# rerun. Après un update_avis(), on vide le cache manuellement.
 # ---------------------------------------------------------------------------
 
-all_df = db.get_all_candidatures()
-quotas = db.get_quotas()
-stats  = db.get_stats()
+@st.cache_data(ttl=2)
+def cached_get_all_candidatures():
+    return db.get_all_candidatures()
+
+@st.cache_data(ttl=2)
+def cached_get_quotas():
+    return db.get_quotas()
+
+@st.cache_data(ttl=2)
+def cached_get_stats():
+    return db.get_stats()
+
+@st.cache_data(ttl=2)
+def cached_get_favorables_count():
+    return db.get_favorables_count()
+
+
+def invalidate_cache():
+    """Vide le cache après toute modification BDD pour forcer un rechargement."""
+    cached_get_all_candidatures.clear()
+    cached_get_quotas.clear()
+    cached_get_stats.clear()
+    cached_get_favorables_count.clear()
+
 
 # ---------------------------------------------------------------------------
-# KPIs — toujours visibles en haut
+# ✅ OPTIMISATION : verrou anti-double-clic
+# Empêche deux actions simultanées quand l'utilisateur clique rapidement.
+# ---------------------------------------------------------------------------
+
+if "processing" not in st.session_state:
+    st.session_state["processing"] = False
+
+
+def do_update_avis(id_demande: str, avis: str):
+    """Met à jour l'avis avec verrou et invalidation du cache."""
+    if st.session_state["processing"]:
+        return
+    st.session_state["processing"] = True
+    try:
+        db.update_avis(id_demande, avis)
+        invalidate_cache()
+    finally:
+        st.session_state["processing"] = False
+    st.rerun()
+
+
+# ---------------------------------------------------------------------------
+# Données globales (cachées)
+# ---------------------------------------------------------------------------
+
+all_df = cached_get_all_candidatures()
+quotas = cached_get_quotas()
+stats  = cached_get_stats()
+
+# ---------------------------------------------------------------------------
+# KPIs
 # ---------------------------------------------------------------------------
 
 st.markdown(render_kpi_row(stats), unsafe_allow_html=True)
@@ -108,7 +161,6 @@ with tab_liste:
     st.markdown(section_header("filter_list", "Parcourir les candidatures"), unsafe_allow_html=True)
     st.markdown("<div style='height:0.5rem'></div>", unsafe_allow_html=True)
 
-    # Filtres
     col_f1, col_f2, col_f3 = st.columns(3)
 
     with col_f1:
@@ -116,20 +168,12 @@ with tab_liste:
             all_df["niveau_etudes"].unique(),
             key=lambda x: NIVEAU_ORDER.index(x) if x in NIVEAU_ORDER else 99,
         )
-        filtre_niveau = st.multiselect(
-            "Niveau d'études",
-            niveaux_dispo,
-            placeholder="Tous les niveaux…",
-        )
+        filtre_niveau = st.multiselect("Niveau d'études", niveaux_dispo, placeholder="Tous les niveaux…")
 
     with col_f2:
         base_df = all_df[all_df["niveau_etudes"].isin(filtre_niveau)] if filtre_niveau else all_df
         filieres_dispo = sorted(base_df["filiere"].unique())
-        filtre_filiere = st.multiselect(
-            "Filière",
-            filieres_dispo,
-            placeholder="Toutes les filières…",
-        )
+        filtre_filiere = st.multiselect("Filière", filieres_dispo, placeholder="Toutes les filières…")
 
     with col_f3:
         filtre_avis = st.multiselect(
@@ -140,7 +184,6 @@ with tab_liste:
 
     st.markdown("<div style='height:1rem'></div>", unsafe_allow_html=True)
 
-    # Application des filtres
     filtered_df = all_df.copy()
     if filtre_niveau:
         filtered_df = filtered_df[filtered_df["niveau_etudes"].isin(filtre_niveau)]
@@ -149,13 +192,11 @@ with tab_liste:
     if filtre_avis:
         filtered_df = filtered_df[filtered_df["avis"].isin(filtre_avis)]
 
-    # Tri
     filtered_df["_niv_order"] = filtered_df["niveau_etudes"].map(
         {v: i for i, v in enumerate(NIVEAU_ORDER)}
     )
     sort_cols       = ["_niv_order", "filiere"]
     ascending_flags = [True, True]
-
     if "moyenne" in filtered_df.columns:
         sort_cols.append("moyenne")
         ascending_flags.append(False)
@@ -166,7 +207,6 @@ with tab_liste:
         .drop(columns=["_niv_order"])
     )
 
-    # Pagination
     if "page_liste" not in st.session_state:
         st.session_state["page_liste"] = 1
 
@@ -177,93 +217,91 @@ with tab_liste:
     page    = st.session_state["page_liste"]
     page_df = filtered_df.iloc[(page - 1) * PAGE_SIZE : page * PAGE_SIZE]
 
-    # En-tête du tableau — proportions ajustées pour plus de lisibilité
     h_cols = st.columns([0.6, 2.5, 1, 2.0, 3.0, 1.8, 2.2])
-    labels = ["N°", "Candidat", "Niveau", "Filière", "Moy.", "Statut", "Actions"]
-
-    for col, label in zip(h_cols, labels):
+    for col, label in zip(h_cols, ["N°", "Candidat", "Niveau", "Filière", "Moy.", "Statut", "Actions"]):
         col.markdown(
             f"<span style='font-size:0.9rem;font-weight:700;color:{COLORS['text_muted']};text-transform:uppercase;letter-spacing:0.8px'>{label}</span>",
-            unsafe_allow_html=True
+            unsafe_allow_html=True,
         )
-        
+
     st.markdown("<div style='height:0.3rem'></div>", unsafe_allow_html=True)
     st.divider()
 
-    fav_counts_local = db.get_favorables_count()
+    # ✅ Chargé une seule fois pour toute la page (pas dans la boucle)
+    fav_counts_local = cached_get_favorables_count()
 
     for _, row in page_df.iterrows():
         id_demande = row["id_demande"]
-        avis = row["avis"]
+        avis       = row["avis"]
         try:
             raw_moy = str(row.get("moyenne") or 0).replace(",", ".")
             moyenne = float(raw_moy)
         except (ValueError, TypeError):
             moyenne = 0.0
 
-        key_quota = (row["niveau_etudes"], row["filiere"])
-        quota_full = quotas.get(key_quota) is not None and fav_counts_local.get(key_quota, 0) >= quotas.get(key_quota)
+        key_quota  = (row["niveau_etudes"], row["filiere"])
+        quota_full = (
+            quotas.get(key_quota) is not None
+            and fav_counts_local.get(key_quota, 0) >= quotas.get(key_quota)
+        )
         _num = row.get("numero", id_demande)
 
         with st.container():
-            # On utilise les mêmes ratios que l'en-tête
             cols = st.columns([0.6, 2.5, 1.5, 2.0, 2.0, 1.8, 2.2])
 
-            # 1. Numéro
             cols[0].markdown(
                 f'<div style="display:flex;align-items:center;height:60px">'
                 f'<span class="num-badge">{_num}</span></div>',
-                unsafe_allow_html=True
+                unsafe_allow_html=True,
             )
-
-            # 2. Nom du Candidat
-            cols[1].markdown(f"""
-                <div style='line-height:1.3;padding:10px 0'>
-                    <div class='candidate-name'>{row['name']}</div>
-                </div>
-            """, unsafe_allow_html=True)
-
-            # 3. Niveau (Nouvelle colonne)
+            cols[1].markdown(
+                f"<div style='line-height:1.3;padding:10px 0'>"
+                f"<div class='candidate-name'>{row['name']}</div></div>",
+                unsafe_allow_html=True,
+            )
             cols[2].markdown(
-                f"<div style='font-size:0.95rem; font-weight:600; padding:15px 0; color:{COLORS['accent']}'>{row['niveau_etudes']}</div>",
-                unsafe_allow_html=True
+                f"<div style='font-size:0.95rem;font-weight:600;padding:15px 0;color:{COLORS['accent']}'>"
+                f"{row['niveau_etudes']}</div>",
+                unsafe_allow_html=True,
             )
-
-            # 4. Filière
             cols[3].markdown(
-                f"<div style='font-size:0.95rem;padding:10px 0;color:{COLORS['text_primary']}'>{row['filiere']}</div>",
-                unsafe_allow_html=True
+                f"<div style='font-size:0.95rem;padding:10px 0;color:{COLORS['text_primary']}'>"
+                f"{row['filiere']}</div>",
+                unsafe_allow_html=True,
             )
-
-            # 5. Moyenne
             cols[4].markdown(
                 f'<div style="padding:12px 0"><span class="moyenne-txt">{moyenne:.2f}</span></div>',
-                unsafe_allow_html=True
+                unsafe_allow_html=True,
             )
-
-            # 6. Statut
             cols[5].markdown(
                 f'<div style="padding:10px 0">{render_status(avis)}</div>',
-                unsafe_allow_html=True
+                unsafe_allow_html=True,
             )
-            
-            # 7. Actions
+
             with cols[6]:
                 b_cols = st.columns(4)
+
+                # ✅ Verrou anti-double-clic : disabled si processing=True
                 def btn_action(col, icon, key_suffix, target_avis, current_avis, disabled_cond, help_text):
-                    if col.button("", key=f"{key_suffix}_{id_demande}", icon=icon,
-                                  disabled=(current_avis == target_avis) or disabled_cond, help=help_text):
-                        db.update_avis(id_demande, target_avis)
-                        st.rerun()
+                    is_disabled = (
+                        (current_avis == target_avis)
+                        or disabled_cond
+                        or st.session_state["processing"]
+                    )
+                    if col.button(
+                        "", key=f"{key_suffix}_{id_demande}", icon=icon,
+                        disabled=is_disabled, help=help_text,
+                    ):
+                        do_update_avis(id_demande, target_avis)
+
                 btn_action(b_cols[0], ":material/check_circle:", "fav",  "Favorable",   avis, (quota_full and avis != "Favorable"), "Favorable")
                 btn_action(b_cols[1], ":material/cancel:",       "def",  "Défavorable", avis, False, "Défavorable")
                 btn_action(b_cols[2], ":material/group_add:",    "sup",  "Suppléant",   avis, False, "Suppléant")
                 btn_action(b_cols[3], ":material/schedule:",     "att",  "En attente",  avis, False, "En attente")
 
-        st.markdown("<div style='margin-bottom: 4px;'></div>", unsafe_allow_html=True)
+        st.markdown("<div style='margin-bottom:4px;'></div>", unsafe_allow_html=True)
         st.divider()
-        
-        
+
     # Pagination
     st.markdown("<div style='height:0.8rem'></div>", unsafe_allow_html=True)
     col_prev, col_info, col_next = st.columns([1, 2, 1])
@@ -277,7 +315,8 @@ with tab_liste:
         start_row = (page - 1) * PAGE_SIZE + 1
         end_row   = min(page * PAGE_SIZE, total_rows)
         st.markdown(
-            f"<div style='text-align:center;color:{COLORS['text_muted']};line-height:2.6rem;font-size:1.05rem;font-weight:600'>"
+            f"<div style='text-align:center;color:{COLORS['text_muted']};line-height:2.6rem;"
+            f"font-size:1.05rem;font-weight:600'>"
             f"{start_row}–{end_row} sur {total_rows} &nbsp;·&nbsp; page {page} / {total_pages}</div>",
             unsafe_allow_html=True,
         )
@@ -292,7 +331,7 @@ with tab_liste:
 # ===========================================================================
 
 with tab_quotas:
-    fav = db.get_favorables_count()
+    fav = cached_get_favorables_count()
     st.markdown("<div style='height:1rem'></div>", unsafe_allow_html=True)
     st.markdown(section_header("monitoring", "État d'avancement des quotas"), unsafe_allow_html=True)
     st.caption("Aperçu en temps réel des places disponibles par filière et par niveau.")
@@ -319,18 +358,10 @@ with tab_eval:
     col_crit, col_search = st.columns([1, 3])
 
     with col_crit:
-        critere = st.selectbox(
-            "Critère de recherche",
-            list(CRITERES.keys()),
-            label_visibility="collapsed",
-        )
+        critere = st.selectbox("Critère de recherche", list(CRITERES.keys()), label_visibility="collapsed")
 
     with col_search:
-        placeholders = {
-            "N°":       "Ex : 1, 12, 250…",
-            "ID Russe": "Ex : 13256",
-            "Nom":      "Ex : DUPONT",
-        }
+        placeholders = {"N°": "Ex : 1, 12, 250…", "ID Russe": "Ex : 13256", "Nom": "Ex : DUPONT"}
         if critere == "ID Russe":
             col_prefix, col_input, col_suffix = st.columns([1, 2, 1])
             with col_prefix:
@@ -341,9 +372,7 @@ with tab_eval:
                 )
             with col_input:
                 search_raw = st.text_input(
-                    "Numéro ID russe",
-                    placeholder=placeholders[critere],
-                    label_visibility="collapsed",
+                    "Numéro ID russe", placeholder=placeholders[critere], label_visibility="collapsed"
                 ).strip()
             with col_suffix:
                 st.markdown(
@@ -354,9 +383,7 @@ with tab_eval:
             search_query = f"{ID_RUSSE_PREFIX}{search_raw}{ID_RUSSE_SUFFIX}" if search_raw else ""
         else:
             search_query = st.text_input(
-                "Rechercher un candidat",
-                placeholder=placeholders[critere],
-                label_visibility="collapsed",
+                "Rechercher un candidat", placeholder=placeholders[critere], label_visibility="collapsed"
             ).strip()
 
     if not search_query:
@@ -374,7 +401,7 @@ with tab_eval:
                 candidat = results[0]
             else:
                 st.info(f"{len(results)} résultats trouvés. Sélectionnez un candidat :")
-                options = {
+                options  = {
                     f"{r['id_demande']} — {r['name']} ({r['filiere']}, {r['niveau_etudes']})": r["id_demande"]
                     for r in results
                 }
@@ -384,7 +411,7 @@ with tab_eval:
         if candidat:
             st.markdown("<div style='height:1rem'></div>", unsafe_allow_html=True)
 
-            fav_counts    = db.get_favorables_count()
+            fav_counts    = cached_get_favorables_count()
             niveau        = candidat["niveau_etudes"]
             filiere       = candidat["filiere"]
             places        = quotas.get((niveau, filiere))
@@ -397,10 +424,7 @@ with tab_eval:
                 st.markdown(render_candidat_card(candidat), unsafe_allow_html=True)
 
             with col_actions:
-                st.markdown(
-                    render_quota_mini(filiere, niveau, selectionnes, places, COLORS),
-                    unsafe_allow_html=True,
-                )
+                st.markdown(render_quota_mini(filiere, niveau, selectionnes, places, COLORS), unsafe_allow_html=True)
 
                 if quota_atteint and candidat["avis"] != "Favorable":
                     st.error("⚠️ Quota atteint — avis favorable impossible")
@@ -413,12 +437,11 @@ with tab_eval:
                     if st.button(
                         "✅ Favorable",
                         key=f"eval_fav_{candidat['id_demande']}",
-                        disabled=(quota_atteint and candidat["avis"] != "Favorable"),
+                        disabled=(quota_atteint and candidat["avis"] != "Favorable") or st.session_state["processing"],
                         use_container_width=True,
                         type="primary",
                     ):
-                        db.update_avis(candidat["id_demande"], "Favorable")
-                        st.rerun()
+                        do_update_avis(candidat["id_demande"], "Favorable")
 
                     st.markdown("<div style='height:0.4rem'></div>", unsafe_allow_html=True)
 
@@ -426,18 +449,18 @@ with tab_eval:
                         "👥 Suppléant",
                         key=f"eval_sup_{candidat['id_demande']}",
                         use_container_width=True,
+                        disabled=st.session_state["processing"],
                     ):
-                        db.update_avis(candidat["id_demande"], "Suppléant")
-                        st.rerun()
+                        do_update_avis(candidat["id_demande"], "Suppléant")
 
                 with btn_col2:
                     if st.button(
                         "❌ Défavorable",
                         key=f"eval_def_{candidat['id_demande']}",
                         use_container_width=True,
+                        disabled=st.session_state["processing"],
                     ):
-                        db.update_avis(candidat["id_demande"], "Défavorable")
-                        st.rerun()
+                        do_update_avis(candidat["id_demande"], "Défavorable")
 
                     st.markdown("<div style='height:0.4rem'></div>", unsafe_allow_html=True)
 
@@ -446,9 +469,9 @@ with tab_eval:
                             "🔄 En attente",
                             key=f"eval_att_{candidat['id_demande']}",
                             use_container_width=True,
+                            disabled=st.session_state["processing"],
                         ):
-                            db.update_avis(candidat["id_demande"], "En attente")
-                            st.rerun()
+                            do_update_avis(candidat["id_demande"], "En attente")
 
 # ===========================================================================
 # ONGLET 4 — RÉALLOCATION DES QUOTAS
@@ -465,8 +488,7 @@ with tab_realloc:
     )
     st.markdown("<div style='height:0.5rem'></div>", unsafe_allow_html=True)
 
-    # Indicateur global
-    total_quota = sum(db.get_quotas().values())
+    total_quota = sum(cached_get_quotas().values())
     st.markdown(
         f'<div class="transfer-summary">'
         f'<div class="transfer-summary-title">Total des bourses : {total_quota} / 150</div>'
@@ -475,11 +497,9 @@ with tab_realloc:
     )
     st.markdown("<div style='height:1rem'></div>", unsafe_allow_html=True)
 
-    # Données pour les selectbox
-    realloc_quotas = db.get_quotas()
-    realloc_fav = db.get_favorables_count()
+    realloc_quotas = cached_get_quotas()
+    realloc_fav    = cached_get_favorables_count()
 
-    # Construire les listes par niveau
     niveaux_with_quotas = sorted(
         {k[0] for k in realloc_quotas},
         key=lambda x: NIVEAU_ORDER.index(x) if x in NIVEAU_ORDER else 99,
@@ -487,22 +507,15 @@ with tab_realloc:
 
     st.markdown('<div class="transfer-card">', unsafe_allow_html=True)
 
-    # --- Sélection niveau / filière HORS du form pour réactivité ---
     col_src, col_dest = st.columns(2, gap="large")
 
     with col_src:
         st.markdown("**Source — retirer des places**")
-        src_niveau = st.selectbox(
-            "Niveau (source)",
-            niveaux_with_quotas,
-            key="src_niveau",
-        )
-        # Filières de la source ayant des places disponibles > 0
+        src_niveau   = st.selectbox("Niveau (source)", niveaux_with_quotas, key="src_niveau")
         src_filieres = []
         for (niv, fil), places in sorted(realloc_quotas.items(), key=lambda x: x[0][1]):
             if niv == src_niveau:
-                fav_count = realloc_fav.get((niv, fil), 0)
-                dispo = places - fav_count
+                dispo = places - realloc_fav.get((niv, fil), 0)
                 if dispo > 0:
                     src_filieres.append(fil)
 
@@ -512,12 +525,11 @@ with tab_realloc:
             key="src_filiere",
         )
 
-        # Info source
         if src_filieres and src_filiere in src_filieres:
-            src_key = (src_niveau, src_filiere)
+            src_key   = (src_niveau, src_filiere)
             src_places = realloc_quotas.get(src_key, 0)
-            src_fav = realloc_fav.get(src_key, 0)
-            src_dispo = src_places - src_fav
+            src_fav    = realloc_fav.get(src_key, 0)
+            src_dispo  = src_places - src_fav
             st.info(f"Quota actuel : **{src_places}** | Favorables : **{src_fav}** | Disponibles : **{src_dispo}**")
         else:
             src_dispo = 0
@@ -525,12 +537,7 @@ with tab_realloc:
 
     with col_dest:
         st.markdown("**Destination — ajouter des places**")
-        dest_niveau = st.selectbox(
-            "Niveau (destination)",
-            niveaux_with_quotas,
-            key="dest_niveau",
-        )
-        # Filières de la destination (exclure la source si même niveau)
+        dest_niveau   = st.selectbox("Niveau (destination)", niveaux_with_quotas, key="dest_niveau")
         dest_filieres = []
         for (niv, fil), places in sorted(realloc_quotas.items(), key=lambda x: x[0][1]):
             if niv == dest_niveau:
@@ -544,14 +551,12 @@ with tab_realloc:
             key="dest_filiere",
         )
 
-        # Info destination
         if dest_filieres and dest_filiere in dest_filieres:
-            dest_key = (dest_niveau, dest_filiere)
+            dest_key    = (dest_niveau, dest_filiere)
             dest_places = realloc_quotas.get(dest_key, 0)
-            dest_fav = realloc_fav.get(dest_key, 0)
+            dest_fav    = realloc_fav.get(dest_key, 0)
             st.info(f"Quota actuel : **{dest_places}** | Favorables : **{dest_fav}**")
 
-    # --- Nombre de places + bouton dans un form pour éviter les reruns accidentels ---
     with st.form("transfer_form"):
         nb_transfer = st.number_input(
             "Nombre de places à transférer",
@@ -570,20 +575,16 @@ with tab_realloc:
         elif not dest_filieres or dest_filiere not in dest_filieres:
             st.error("Veuillez sélectionner une filière de destination valide.")
         else:
-            result = db.transfer_quota(
-                src_niveau, src_filiere,
-                dest_niveau, dest_filiere,
-                nb_transfer,
-            )
+            result = db.transfer_quota(src_niveau, src_filiere, dest_niveau, dest_filiere, nb_transfer)
             if result["success"]:
-                # Log dans la session
+                invalidate_cache()
                 if "transfer_log" not in st.session_state:
                     st.session_state["transfer_log"] = []
                 st.session_state["transfer_log"].append({
-                    "source": f"{src_filiere} ({src_niveau})",
+                    "source":      f"{src_filiere} ({src_niveau})",
                     "destination": f"{dest_filiere} ({dest_niveau})",
-                    "places": nb_transfer,
-                    "horodatage": datetime.now().strftime("%H:%M:%S"),
+                    "places":      nb_transfer,
+                    "horodatage":  datetime.now().strftime("%H:%M:%S"),
                 })
                 st.success(
                     f"Transfert effectué : **{nb_transfer}** place(s) de "
@@ -595,7 +596,6 @@ with tab_realloc:
             else:
                 st.error(f"Échec du transfert : {result['error']}")
 
-    # Historique des transferts de la session
     if st.session_state.get("transfer_log"):
         st.markdown("<div style='height:1.5rem'></div>", unsafe_allow_html=True)
         st.markdown(section_header("history", "Historique des transferts (session)"), unsafe_allow_html=True)
@@ -614,11 +614,11 @@ with tab_export:
     st.caption("Générez et téléchargez les documents de décisions finales pour transmission officielle.")
     st.markdown("<div style='height:1rem'></div>", unsafe_allow_html=True)
 
-    # --- Export 1 : Word — Titulaires & Suppléants ---
+    # Export 1 : Word — Titulaires & Suppléants
     st.markdown(f"""
     <div class="export-card">
         <div class="export-card-header">
-            <span class="ms" style="font-size:28px; color:{COLORS['accent']};">description</span>
+            <span class="ms" style="font-size:28px;color:{COLORS['accent']};">description</span>
             <div>
                 <div class="export-card-title">Export Word — Titulaires & Suppléants</div>
                 <div class="export-card-desc">Document officiel avec la liste des candidats Favorables (Titulaires) et Suppléants, organisée par niveau et filière.</div>
@@ -647,11 +647,11 @@ with tab_export:
 
     st.divider()
 
-    # --- Export 2 : Word — Toutes les décisions ---
+    # Export 2 : Word — Toutes les décisions
     st.markdown(f"""
     <div class="export-card">
         <div class="export-card-header">
-            <span class="ms" style="font-size:28px; color:{COLORS['accent']};">fact_check</span>
+            <span class="ms" style="font-size:28px;color:{COLORS['accent']};">fact_check</span>
             <div>
                 <div class="export-card-title">Export Word — Toutes les décisions</div>
                 <div class="export-card-desc">Document complet incluant Titulaires, Suppléants et Candidats non retenus (Défavorables), organisé par niveau et filière.</div>
@@ -680,14 +680,14 @@ with tab_export:
 
     st.divider()
 
-    # --- Export 3 : Excel — Candidatures par avis ---
+    # Export 3 : Excel — Candidatures par avis
     st.markdown(f"""
     <div class="export-card">
         <div class="export-card-header">
-            <span class="ms" style="font-size:28px; color:#3fb950;">table_chart</span>
+            <span class="ms" style="font-size:28px;color:#3fb950;">table_chart</span>
             <div>
                 <div class="export-card-title">Export Excel — Candidatures par avis</div>
-                <div class="export-card-desc">Fichier Excel avec une feuille par catégorie d'avis (Favorable, Suppléant, Défavorable). Idéal pour l'analyse et le traitement des données.</div>
+                <div class="export-card-desc">Fichier Excel avec une feuille par catégorie d'avis. Idéal pour l'analyse et le traitement des données.</div>
             </div>
         </div>
     </div>
@@ -713,11 +713,11 @@ with tab_export:
 
     st.divider()
 
-    # --- Export 4 : Excel — Grille des quotas ---
+    # Export 4 : Excel — Grille des quotas
     st.markdown(f"""
     <div class="export-card">
         <div class="export-card-header">
-            <span class="ms" style="font-size:28px; color:#d29922;">grid_view</span>
+            <span class="ms" style="font-size:28px;color:#d29922;">grid_view</span>
             <div>
                 <div class="export-card-title">Export Excel — Grille des quotas</div>
                 <div class="export-card-desc">Document de référence listant toutes les filières par niveau avec leurs quotas, le nombre de favorables et les places restantes.</div>
@@ -755,12 +755,10 @@ components.html(build_sticky_js(COLORS), height=0)
 # ---------------------------------------------------------------------------
 
 with st.sidebar:
-    total = sum(quotas.values())
-
+    total      = sum(quotas.values())
     progression = stats["favorables"] / total if total > 0 else 0
-    pct = int(progression * 100)
-
-    color_bar = "#008751" if progression >= 1.0 else "#EAC100"
+    pct         = int(progression * 100)
+    color_bar   = "#008751" if progression >= 1.0 else "#EAC100"
 
     st.markdown(get_sidebar_style(color_bar), unsafe_allow_html=True)
 
@@ -783,6 +781,7 @@ with st.sidebar:
 
     if st.button("Réinitialiser la session", type="secondary", use_container_width=True):
         db.reset_db()
+        invalidate_cache()
         for key in list(st.session_state.keys()):
             del st.session_state[key]
         st.rerun()
