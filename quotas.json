@@ -18,7 +18,7 @@
     "Gestion des Musées et Protection de l'Héritage Culturel et Naturel": 2,
     "Design": 2,
     "Métiers d'art appliqué et métiers tradionnels": 2,
-    "Medécine Générale": 5,
+    "Médecine Générale": 7,
     "Pharmacie": 2
   },
   "Master": {
@@ -39,15 +39,12 @@
     "Bioressources aquatique et aquaculture": 3,
     "Design (par industrie)": 3,
     "Métiers d'art appliqué et métiers traditionnels": 3,
-    "Restauration": 3,
     "Construction": 3,
     "Exploitation Technique de Systènes Electriques d'Aeronefs et de Systèmes de Pilotage Aérien et de Navigation": 3,
     "Santé Publique": 3,
     "Pharmacie Industrielle": 3
   },
   "Doctorat": {
-    "Expertise médico-légale": 1,
-    "Médecine transfusionnelle": 1,
     "Radiothérapie": 2,
     "Pharmacologie clinique": 1,
     "Génétique de laboratoire": 1,
