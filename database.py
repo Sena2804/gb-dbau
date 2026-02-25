@@ -1,4 +1,10 @@
-"""Module de gestion SQLite pour les candidatures CNBAU."""
+"""Module de gestion SQLite pour les candidatures CNBAU.
+OPTIMISATIONS :
+  - get_stats() → une seule requête SQL au lieu de 5
+  - get_all_candidatures(), get_quotas(), get_favorables_count(), get_stats()
+    sont désormais cachées via st.cache_data(ttl=2) — appelées depuis app.py
+    (les fonctions ici restent pures, le cache est posé dans app.py)
+"""
 
 import io
 import json
@@ -21,12 +27,10 @@ NIVEAU_MAP = {
     "SPÉCIALITÉ MÉDICALE": "Spécialisation",
 }
 
-# Politique de gestion des doublons par catégorie.
-# "keep" = conserver les deux entrées, "drop" = ne garder que la première.
 DUPLICATE_POLICY = {
-    "identical": "keep",                # Même personne, même filière/niveau
-    "same_person_diff_filiere": "keep", # Même personne, filières/niveaux différents
-    "different_people": "keep",         # Personnes différentes, même ID russe
+    "identical": "keep",
+    "same_person_diff_filiere": "keep",
+    "different_people": "keep",
 }
 
 
@@ -44,7 +48,7 @@ def init_db():
             id_russe TEXT,
             numero INTEGER,
             sexe TEXT,
-            name TEXT NOT NULL, 
+            name TEXT NOT NULL,
             date_lieu_naissance TEXT,
             diplome_filiere_annee TEXT,
             moyenne TEXT,
@@ -67,19 +71,15 @@ def init_db():
 
 
 def _normalize_niveau(raw: str) -> str:
-    """Normalise 'LICENCE' → 'Licence', 'SPECIALITE' → 'Spécialisation', etc."""
     key = raw.strip().upper()
     return NIVEAU_MAP.get(key, raw.strip().title())
 
 
 def _normalize_filiere(name: str) -> str:
-    """Normalise les espaces multiples dans un nom de filière."""
     return re.sub(r'\s+', ' ', name).strip()
 
 
 def _build_filiere_lookup() -> dict:
-    """Construit un index {clé_normalisée: nom_json} depuis quotas.json pour matcher
-    les noms de filières indépendamment de la casse et des espaces."""
     quotas_path = Path(__file__).resolve().parent / "quotas.json"
     if not quotas_path.exists():
         return {}
@@ -94,7 +94,6 @@ def _build_filiere_lookup() -> dict:
 
 
 def _parse_real_excel(excel_path: str) -> list[dict]:
-    """Parse le fichier CNaBAU structuré avec lignes de séparation niveau/filière."""
     from openpyxl import load_workbook
 
     wb = load_workbook(excel_path, data_only=True)
@@ -112,38 +111,31 @@ def _parse_real_excel(excel_path: str) -> list[dict]:
 
         val_a = str(cell_a).strip()
 
-        # Ligne de séparation NIVEAU
         if "NIVEAU" in val_a.upper() and ":" in val_a:
             raw_niveau = val_a.split(":", 1)[-1].strip()
             current_niveau = _normalize_niveau(raw_niveau)
             continue
 
-        # Ligne de séparation Filière (avec préfixe "Filiere :" ou "Filiere:")
         val_lower = val_a.lower()
         if val_lower.startswith("filiere") or val_lower.startswith("filière"):
             if ":" in val_a:
                 raw_fil = val_a.split(":", 1)[-1].strip()
             else:
                 raw_fil = val_a
-            # Nettoyer : enlever "(N bourses)" puis "- code", normaliser les espaces
             raw_fil = re.sub(r'\(\s*\d+\s*bourses?\)', '', raw_fil).strip()
             raw_fil = re.sub(r'\s*-\s*[\d.]+\s*$', '', raw_fil).strip()
             raw_fil = _normalize_filiere(raw_fil)
-            # Matcher avec le nom officiel du JSON (casse de référence)
             current_filiere = filiere_lookup.get(raw_fil.lower(), raw_fil)
             continue
 
-        # Ligne de données : la colonne A doit être un numéro
         try:
             num = int(cell_a)
         except (ValueError, TypeError):
-            # Peut être un nom de filière orphelin (sans préfixe "Filiere :")
             rest_empty = all(c.value is None for c in row[1:9])
             if rest_empty and len(val_a) > 3:
                 current_filiere = val_a.strip()
             continue
 
-        # C'est un candidat
         def cell_str(idx):
             v = row[idx].value if idx < len(row) else None
             return str(v).strip() if v is not None else ""
@@ -169,7 +161,6 @@ def _parse_real_excel(excel_path: str) -> list[dict]:
 
 
 def _apply_duplicate_policy(candidates: list[dict]) -> list[dict]:
-    """Applique la politique de déduplication selon DUPLICATE_POLICY."""
     from collections import defaultdict
 
     by_id_russe = defaultdict(list)
@@ -178,14 +169,13 @@ def _apply_duplicate_policy(candidates: list[dict]) -> list[dict]:
         if id_russe:
             by_id_russe[id_russe].append(c)
 
-    to_drop = set()  # id_demande à supprimer
+    to_drop = set()
 
     for id_russe, group in by_id_russe.items():
         if len(group) < 2:
             continue
         a, b = group[0], group[1]
 
-        # Classifier la paire
         name_a = set(a["name"].upper().split())
         name_b = set(b["name"].upper().split())
         common = name_a & name_b
@@ -199,7 +189,6 @@ def _apply_duplicate_policy(candidates: list[dict]) -> list[dict]:
             category = "same_person_diff_filiere"
 
         if DUPLICATE_POLICY.get(category) == "drop":
-            # On garde la première entrée (plus petit numéro), on supprime la seconde
             to_drop.add(b["id_demande"])
 
     if to_drop:
@@ -209,12 +198,10 @@ def _apply_duplicate_policy(candidates: list[dict]) -> list[dict]:
 
 
 def _is_real_cnabau_file(excel_path: str) -> bool:
-    """Détecte si c'est le vrai fichier CNaBAU (structuré) ou un fichier plat."""
     from openpyxl import load_workbook
 
     wb = load_workbook(excel_path, read_only=True, data_only=True)
     ws = wb.active
-    # Vérifie si les premières lignes contiennent du texte institutionnel
     for row in ws.iter_rows(min_row=1, max_row=10, max_col=1, values_only=True):
         val = str(row[0] or "")
         if "NIVEAU" in val.upper() or "CNaBAU" in val or "BOURSE" in val.upper():
@@ -225,16 +212,12 @@ def _is_real_cnabau_file(excel_path: str) -> bool:
 
 
 def load_excel_to_db(excel_path: str) -> int:
-    """Charge un fichier Excel dans la base SQLite.
-    Détecte automatiquement si c'est le vrai fichier CNaBAU ou un fichier plat (mock).
-    """
     if _is_real_cnabau_file(excel_path):
         return _load_real_excel(excel_path)
     return _load_flat_excel(excel_path)
 
 
 def _load_real_excel(excel_path: str) -> int:
-    """Charge le vrai fichier CNaBAU structuré avec gestion des doublons."""
     candidates = _parse_real_excel(excel_path)
     candidates = _apply_duplicate_policy(candidates)
     conn = get_connection()
@@ -254,7 +237,6 @@ def _load_real_excel(excel_path: str) -> int:
 
 
 def _load_flat_excel(excel_path: str) -> int:
-    """Charge un fichier Excel plat (mock / format simple)."""
     df = pd.read_excel(excel_path, engine="openpyxl")
     df.columns = [c.strip() for c in df.columns]
     if "avis" in df.columns:
@@ -277,7 +259,6 @@ def _load_flat_excel(excel_path: str) -> int:
 
 
 def load_quotas(quotas_path: str):
-    """Charge les quotas depuis un fichier JSON."""
     with open(quotas_path, "r", encoding="utf-8") as f:
         data = json.load(f)
 
@@ -301,7 +282,6 @@ def get_all_candidatures() -> pd.DataFrame:
 
 
 def get_quotas() -> dict:
-    """Retourne {(niveau, filiere): nb_places}."""
     conn = get_connection()
     rows = conn.execute("SELECT niveau_etudes, filiere, nb_places FROM quotas").fetchall()
     conn.close()
@@ -309,7 +289,6 @@ def get_quotas() -> dict:
 
 
 def get_favorables_count() -> dict:
-    """Retourne {(niveau, filiere): count} des avis favorables."""
     conn = get_connection()
     rows = conn.execute(
         """SELECT niveau_etudes, filiere, COUNT(*) as n
@@ -331,7 +310,6 @@ def update_avis(id_demande: str, avis: str):
 
 
 def search_by_field(field: str, query: str) -> dict | None:
-    """Recherche exacte sur un champ précis."""
     conn = get_connection()
     row = None
     if field == "numero":
@@ -355,7 +333,6 @@ def search_by_field(field: str, query: str) -> dict | None:
 
 
 def search_by_field_fuzzy(field: str, query: str) -> list[dict]:
-    """Recherche floue sur un champ précis."""
     conn = get_connection()
     if field == "numero":
         rows = conn.execute(
@@ -378,26 +355,30 @@ def search_by_field_fuzzy(field: str, query: str) -> list[dict]:
     return [dict(r) for r in rows]
 
 
+# ✅ OPTIMISATION : une seule requête SQL au lieu de 5 COUNT() séparés
 def get_stats() -> dict:
     conn = get_connection()
-    total = conn.execute("SELECT COUNT(*) FROM candidatures").fetchone()[0]
-    favorables = conn.execute(
-        "SELECT COUNT(*) FROM candidatures WHERE avis = 'Favorable'"
-    ).fetchone()[0]
-    defavorables = conn.execute(
-        "SELECT COUNT(*) FROM candidatures WHERE avis = 'Défavorable'"
-    ).fetchone()[0]
-    suppleants = conn.execute(
-        "SELECT COUNT(*) FROM candidatures WHERE avis = 'Suppléant'"
-    ).fetchone()[0]
+    row = conn.execute("""
+        SELECT
+            COUNT(*) AS total,
+            SUM(CASE WHEN avis = 'Favorable'   THEN 1 ELSE 0 END) AS favorables,
+            SUM(CASE WHEN avis = 'Défavorable' THEN 1 ELSE 0 END) AS defavorables,
+            SUM(CASE WHEN avis = 'Suppléant'   THEN 1 ELSE 0 END) AS suppleants
+        FROM candidatures
+    """).fetchone()
     conn.close()
+    total     = row["total"]        or 0
+    fav       = row["favorables"]   or 0
+    defav     = row["defavorables"] or 0
+    supp      = row["suppleants"]   or 0
+    traites   = fav + defav + supp
     return {
-        "total": total,
-        "traites": favorables + defavorables + suppleants,
-        "favorables": favorables,
-        "defavorables": defavorables,
-        "suppleants": suppleants,
-        "restants": total - favorables - defavorables - suppleants,
+        "total":        total,
+        "traites":      traites,
+        "favorables":   fav,
+        "defavorables": defav,
+        "suppleants":   supp,
+        "restants":     total - traites,
     }
 
 
@@ -405,9 +386,6 @@ NIVEAU_ORDER = ["Licence", "Master", "Doctorat", "Spécialisation"]
 
 
 def _create_base_docx():
-    """Crée un Document Word de base avec logo, en-tête, marges et numéros de page.
-    Retourne (doc, add_table_for_section, set_run_font).
-    """
     from itertools import groupby
 
     from docx import Document
@@ -419,14 +397,12 @@ def _create_base_docx():
 
     doc = Document()
 
-    # --- Page margins ---
     for section in doc.sections:
         section.top_margin = Twips(720)
         section.bottom_margin = Twips(720)
         section.left_margin = Twips(720)
         section.right_margin = Twips(720)
 
-    # --- Page numbers (centered in footer) ---
     for section in doc.sections:
         footer = section.footer
         footer.is_linked_to_previous = False
@@ -461,7 +437,6 @@ def _create_base_docx():
         tcPr.append(shd)
 
     def merge_row_cells(row, table):
-        """Merge all cells in a row using gridSpan."""
         n_cols = len(table.columns)
         tc = row.cells[0]._tc
         tcPr = tc.get_or_add_tcPr()
@@ -552,7 +527,6 @@ def _create_base_docx():
 
         return table
 
-    # --- Logo ---
     logo_path = Path(__file__).parent / "assets" / "logo.png"
     if logo_path.exists():
         section = doc.sections[0]
@@ -561,7 +535,6 @@ def _create_base_docx():
         p.alignment = WD_ALIGN_PARAGRAPH.CENTER
         p.add_run().add_picture(str(logo_path), width=avail_width)
 
-    # --- Document header ---
     p = doc.add_paragraph()
     p.alignment = WD_ALIGN_PARAGRAPH.CENTER
     run = p.add_run("DIRECTION DES BOURSES ET AIDES UNIVERSITAIRES ")
@@ -581,7 +554,6 @@ def _create_base_docx():
 
 
 def export_to_docx(output_path: str) -> str:
-    """Exporte les candidatures Favorable/Suppléant dans un document Word (.docx)."""
     from docx.enum.text import WD_ALIGN_PARAGRAPH
 
     conn = get_connection()
@@ -598,17 +570,14 @@ def export_to_docx(output_path: str) -> str:
 
     doc, add_table_for_section, set_run_font = _create_base_docx()
 
-    # --- Section Titulaires ---
     p = doc.add_paragraph()
     p.alignment = WD_ALIGN_PARAGRAPH.JUSTIFY
     run = p.add_run("LISTE DES CANDIDATS TITULAIRES ")
     set_run_font(run, size=13, underline=True)
 
     add_table_for_section(favorables)
-
     doc.add_paragraph()
 
-    # --- Section Suppléants ---
     p = doc.add_paragraph()
     p.alignment = WD_ALIGN_PARAGRAPH.JUSTIFY
     run = p.add_run("LISTE DES CANDIDATS SUPPLÉANTS")
@@ -621,7 +590,6 @@ def export_to_docx(output_path: str) -> str:
 
 
 def export_all_avis_to_docx(output_path: str) -> str:
-    """Exporte TOUTES les candidatures (Favorable, Suppléant, Défavorable) dans un document Word."""
     from docx.enum.text import WD_ALIGN_PARAGRAPH
 
     conn = get_connection()
@@ -633,13 +601,12 @@ def export_all_avis_to_docx(output_path: str) -> str:
     conn.close()
     candidates = [dict(r) for r in rows]
 
-    favorables = [c for c in candidates if c["avis"] == "Favorable"]
-    suppleants = [c for c in candidates if c["avis"] == "Suppléant"]
+    favorables  = [c for c in candidates if c["avis"] == "Favorable"]
+    suppleants  = [c for c in candidates if c["avis"] == "Suppléant"]
     defavorables = [c for c in candidates if c["avis"] == "Défavorable"]
 
     doc, add_table_for_section, set_run_font = _create_base_docx()
 
-    # --- Section Titulaires ---
     p = doc.add_paragraph()
     p.alignment = WD_ALIGN_PARAGRAPH.JUSTIFY
     run = p.add_run("LISTE DES CANDIDATS TITULAIRES ")
@@ -647,7 +614,6 @@ def export_all_avis_to_docx(output_path: str) -> str:
     add_table_for_section(favorables)
     doc.add_paragraph()
 
-    # --- Section Suppléants ---
     p = doc.add_paragraph()
     p.alignment = WD_ALIGN_PARAGRAPH.JUSTIFY
     run = p.add_run("LISTE DES CANDIDATS SUPPLÉANTS")
@@ -655,7 +621,6 @@ def export_all_avis_to_docx(output_path: str) -> str:
     add_table_for_section(suppleants)
     doc.add_paragraph()
 
-    # --- Section Défavorables ---
     p = doc.add_paragraph()
     p.alignment = WD_ALIGN_PARAGRAPH.JUSTIFY
     run = p.add_run("LISTE DES CANDIDATS NON RETENUS")
@@ -667,7 +632,6 @@ def export_all_avis_to_docx(output_path: str) -> str:
 
 
 def export_avis_to_xlsx(output_path: str) -> str:
-    """Exporte les candidatures par avis dans un fichier Excel avec une feuille par avis."""
     from itertools import groupby
 
     from openpyxl import Workbook
@@ -677,19 +641,19 @@ def export_avis_to_xlsx(output_path: str) -> str:
     conn = get_connection()
 
     avis_config = [
-        ("Favorable", "Favorables (Titulaires)"),
-        ("Suppléant", "Suppléants"),
-        ("Défavorable", "Défavorables"),
+        ("Favorable",  "Favorables (Titulaires)"),
+        ("Suppléant",  "Suppléants"),
+        ("Défavorable","Défavorables"),
     ]
 
     wb = Workbook()
     wb.remove(wb.active)
 
-    header_font = Font(name="Trebuchet MS", bold=True, size=11)
-    header_fill = PatternFill(start_color="BFBFBF", end_color="BFBFBF", fill_type="solid")
-    niveau_fill = PatternFill(start_color="E7E6E6", end_color="E7E6E6", fill_type="solid")
-    headers = ["N°", "Filière", "Nom et Prénoms", "Observation"]
-    col_widths = [8, 45, 35, 25]
+    header_font  = Font(name="Trebuchet MS", bold=True, size=11)
+    header_fill  = PatternFill(start_color="BFBFBF", end_color="BFBFBF", fill_type="solid")
+    niveau_fill  = PatternFill(start_color="E7E6E6", end_color="E7E6E6", fill_type="solid")
+    headers      = ["N°", "Filière", "Nom et Prénoms", "Observation"]
+    col_widths   = [8, 45, 35, 25]
 
     for avis_value, sheet_name in avis_config:
         rows = conn.execute(
@@ -745,7 +709,6 @@ def export_avis_to_xlsx(output_path: str) -> str:
 
 
 def export_quotas_to_xlsx(output_path: str) -> str:
-    """Exporte la grille des quotas par filière et par niveau dans un fichier Excel."""
     from itertools import groupby
 
     from openpyxl import Workbook
@@ -770,11 +733,11 @@ def export_quotas_to_xlsx(output_path: str) -> str:
     ws = wb.active
     ws.title = "Quotas par Filière"
 
-    headers = ["Niveau", "Filière", "Places (Quota)", "Favorables", "Restantes"]
+    headers     = ["Niveau", "Filière", "Places (Quota)", "Favorables", "Restantes"]
     header_font = Font(name="Trebuchet MS", bold=True, size=11)
     header_fill = PatternFill(start_color="BFBFBF", end_color="BFBFBF", fill_type="solid")
     niveau_fill = PatternFill(start_color="E7E6E6", end_color="E7E6E6", fill_type="solid")
-    col_widths = [18, 50, 16, 14, 14]
+    col_widths  = [18, 50, 16, 14, 14]
 
     for col_idx, header in enumerate(headers, 1):
         cell = ws.cell(row=1, column=col_idx, value=header)
@@ -794,9 +757,9 @@ def export_quotas_to_xlsx(output_path: str) -> str:
 
     quotas_data.sort(key=sort_key)
 
-    current_row = 2
-    total_places = 0
-    total_fav = 0
+    current_row    = 2
+    total_places   = 0
+    total_fav      = 0
     total_restantes = 0
 
     for niveau, group in groupby(quotas_data, key=lambda q: q["niveau_etudes"]):
@@ -811,30 +774,29 @@ def export_quotas_to_xlsx(output_path: str) -> str:
         current_row += 1
 
         for q in group:
-            key = (q["niveau_etudes"], q["filiere"])
-            fav = fav_counts.get(key, 0)
+            key       = (q["niveau_etudes"], q["filiere"])
+            fav       = fav_counts.get(key, 0)
             restantes = q["nb_places"] - fav
 
-            total_places += q["nb_places"]
-            total_fav += fav
+            total_places    += q["nb_places"]
+            total_fav       += fav
             total_restantes += restantes
 
             ws.cell(row=current_row, column=1, value=q["niveau_etudes"])
             ws.cell(row=current_row, column=2, value=q["filiere"])
             ws.cell(row=current_row, column=3, value=q["nb_places"]).alignment = Alignment(horizontal="center")
-            ws.cell(row=current_row, column=4, value=fav).alignment = Alignment(horizontal="center")
-            ws.cell(row=current_row, column=5, value=restantes).alignment = Alignment(horizontal="center")
+            ws.cell(row=current_row, column=4, value=fav).alignment             = Alignment(horizontal="center")
+            ws.cell(row=current_row, column=5, value=restantes).alignment       = Alignment(horizontal="center")
             current_row += 1
 
-    # --- Ligne de total ---
     total_fill = PatternFill(start_color="BFBFBF", end_color="BFBFBF", fill_type="solid")
     total_font = Font(name="Trebuchet MS", bold=True, size=11)
     ws.cell(row=current_row, column=2, value="TOTAL").font = total_font
     for col_idx in range(1, len(headers) + 1):
         ws.cell(row=current_row, column=col_idx).fill = total_fill
-    ws.cell(row=current_row, column=3, value=total_places).font = total_font
+    ws.cell(row=current_row, column=3, value=total_places).font  = total_font
     ws.cell(row=current_row, column=3).alignment = Alignment(horizontal="center")
-    ws.cell(row=current_row, column=4, value=total_fav).font = total_font
+    ws.cell(row=current_row, column=4, value=total_fav).font     = total_font
     ws.cell(row=current_row, column=4).alignment = Alignment(horizontal="center")
     ws.cell(row=current_row, column=5, value=total_restantes).font = total_font
     ws.cell(row=current_row, column=5).alignment = Alignment(horizontal="center")
@@ -844,7 +806,6 @@ def export_quotas_to_xlsx(output_path: str) -> str:
 
 
 def get_total_quota() -> int:
-    """Retourne la somme totale de tous les quotas."""
     conn = get_connection()
     total = conn.execute("SELECT COALESCE(SUM(nb_places), 0) FROM quotas").fetchone()[0]
     conn.close()
@@ -854,7 +815,6 @@ def get_total_quota() -> int:
 def transfer_quota(source_niveau: str, source_filiere: str,
                    dest_niveau: str, dest_filiere: str,
                    nb_places: int) -> dict:
-    """Transfère nb_places de la source vers la destination de manière transactionnelle."""
     if nb_places <= 0:
         return {"success": False, "error": "Le nombre de places doit être supérieur à 0."}
 
@@ -863,7 +823,6 @@ def transfer_quota(source_niveau: str, source_filiere: str,
 
     conn = get_connection()
     try:
-        # Lire le quota source
         row_src = conn.execute(
             "SELECT nb_places FROM quotas WHERE niveau_etudes = ? AND filiere = ?",
             (source_niveau, source_filiere),
@@ -873,21 +832,19 @@ def transfer_quota(source_niveau: str, source_filiere: str,
 
         quota_source = row_src["nb_places"]
 
-        # Compter les favorables déjà attribués à la source
         fav_row = conn.execute(
             "SELECT COUNT(*) as n FROM candidatures WHERE avis = 'Favorable' AND niveau_etudes = ? AND filiere = ?",
             (source_niveau, source_filiere),
         ).fetchone()
-        fav_source = fav_row["n"]
-
+        fav_source  = fav_row["n"]
         disponibles = quota_source - fav_source
+
         if nb_places > disponibles:
             return {
                 "success": False,
                 "error": f"Places disponibles insuffisantes. Quota : {quota_source}, Favorables : {fav_source}, Disponibles : {disponibles}.",
             }
 
-        # Lire le quota destination
         row_dest = conn.execute(
             "SELECT nb_places FROM quotas WHERE niveau_etudes = ? AND filiere = ?",
             (dest_niveau, dest_filiere),
@@ -897,7 +854,6 @@ def transfer_quota(source_niveau: str, source_filiere: str,
 
         quota_dest = row_dest["nb_places"]
 
-        # Transaction : retirer de la source, ajouter à la destination
         conn.execute(
             "UPDATE quotas SET nb_places = nb_places - ? WHERE niveau_etudes = ? AND filiere = ?",
             (nb_places, source_niveau, source_filiere),
@@ -911,7 +867,7 @@ def transfer_quota(source_niveau: str, source_filiere: str,
         return {
             "success": True,
             "source_nouveau": quota_source - nb_places,
-            "dest_nouveau": quota_dest + nb_places,
+            "dest_nouveau":   quota_dest   + nb_places,
         }
     except Exception as e:
         conn.rollback()
@@ -934,6 +890,5 @@ def is_db_loaded() -> bool:
 
 
 def reset_db():
-    """Supprime et recrée les tables."""
     if Path(DB_PATH).exists():
         Path(DB_PATH).unlink()

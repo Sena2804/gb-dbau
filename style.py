@@ -1,15 +1,19 @@
 import base64
 from pathlib import Path
 
-def get_logo_b64():
-    """Récupère l'image du logo et la convertit en Base64 une seule fois."""
+import streamlit as st
+
+
+# ✅ OPTIMISATION : logo chargé UNE SEULE FOIS et mis en cache par Streamlit
+# Sans ce cache, le fichier était relu + encodé en Base64 à chaque rerun.
+@st.cache_data
+def get_logo_b64() -> str:
     img_path = Path(__file__).resolve().parent / "assets" / "image.png"
     if img_path.exists():
         with open(img_path, "rb") as f:
             return base64.b64encode(f.read()).decode()
     return ""
 
-LOGO_DATA = get_logo_b64()
 
 NIVEAU_ORDER = ["Licence", "Master", "Doctorat", "Spécialisation"]
 
@@ -29,6 +33,9 @@ def get_colors(light: bool) -> dict:
 
 
 def build_css(colors: dict, light: bool) -> str:
+    # On appelle la fonction cachée — pas de re-lecture disque à chaque rerun
+    logo_data = get_logo_b64()
+
     watermark_css = f"""
     [data-testid="stAppViewContainer"]::after {{
         content: "";
@@ -37,14 +44,15 @@ def build_css(colors: dict, light: bool) -> str:
         left: 0;
         width: 100vw;
         height: 100vh;
-        background-image: url("data:image/png;base64,{LOGO_DATA}");
+        background-image: url("data:image/png;base64,{logo_data}");
         background-repeat: repeat;
         background-size: 700px;
         opacity: 0.04;
-        pointer-events: none; /* TRÈS IMPORTANT : permet de cliquer sur les boutons en dessous */
-        z-index: 99999; /* Devant tout le monde */
+        pointer-events: none;
+        z-index: 99999;
     }}
-    """ if LOGO_DATA else ""
+    """ if logo_data else ""
+
     light_overrides = '''
     /* --- Streamlit native overrides for light mode --- */
     [data-testid="stApp"] {
@@ -76,7 +84,6 @@ def build_css(colors: dict, light: bool) -> str:
     hr {
         border-color: #d0d7de !important;
     }
-    /* --- Buttons --- */
     button[kind="secondary"], button[data-testid="stBaseButton-secondary"] {
         background-color: #f6f8fa !important;
         color: #24292f !important;
@@ -94,8 +101,6 @@ def build_css(colors: dict, light: bool) -> str:
         background-color: #f6f8fa !important;
         border-color: #d0d7de !important;
     }
-
-    /* --- Inputs, selects, dropdowns --- */
     [data-testid="stTextInput"] input,
     [data-testid="stNumberInput"] input {
         background-color: #ffffff !important;
@@ -143,8 +148,6 @@ def build_css(colors: dict, light: bool) -> str:
         background-color: #e1e4e8 !important;
         color: #24292f !important;
     }
-
-    /* --- Progress bar --- */
     [data-testid="stProgress"] [role="progressbar"] > div {
         background-color: #d0d7de !important;
     }
@@ -154,8 +157,6 @@ def build_css(colors: dict, light: bool) -> str:
     [data-testid="stProgress"] [role="progressbar"] > div > div > div {
         background-color: #EAC100 !important;
     }
-
-    /* --- Alert boxes --- */
     [data-testid="stAlert"] {
         background-color: #f6f8fa !important;
         color: #24292f !important;
@@ -166,8 +167,6 @@ def build_css(colors: dict, light: bool) -> str:
     }
     .stAlertContainer div { color: inherit !important; }
     .stAlertContainer p { color: #24292f !important; }
-
-    /* --- File uploader --- */
     [data-testid="stFileUploader"] {
         background-color: #ffffff !important;
     }
@@ -175,8 +174,6 @@ def build_css(colors: dict, light: bool) -> str:
         background-color: #f6f8fa !important;
         border-color: #d0d7de !important;
     }
-
-    /* --- Tooltips --- */
     [role="tooltip"],
     [role="tooltip"] > div,
     [role="tooltip"] div,
@@ -187,8 +184,6 @@ def build_css(colors: dict, light: bool) -> str:
         background-color: #24292f !important;
         color: #ffffff !important;
     }
-
-    /* Restore semantic colors */
     .badge-favorable, .badge-favorable .ms { color: #3fb950 !important; }
     .badge-defavorable, .badge-defavorable .ms { color: #f85149 !important; }
     .badge-attente, .badge-attente .ms { color: #8b949e !important; }
@@ -224,9 +219,6 @@ def build_css(colors: dict, light: bool) -> str:
 <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Rounded:opsz,wght,FILL,GRAD@24,400,1,0" rel="stylesheet">
 <style>
     {watermark_css}
-    /* ================================================================
-       THEME VARIABLES
-    ================================================================ */
     :root {{
         --bg-page: {colors["bg_page"]};
         --bg-card: {colors["bg_card"]};
@@ -238,12 +230,7 @@ def build_css(colors: dict, light: bool) -> str:
         --border-subtle: {colors["border_subtle"]};
         --shadow: {colors["shadow"]};
     }}
-    
-    
 
-    /* ================================================================
-       LAYOUT — Respiration généreuse pour grand écran
-    ================================================================ */
     .block-container {{
         padding-top: 2.5rem !important;
         max-width: 100% !important;
@@ -252,9 +239,6 @@ def build_css(colors: dict, light: bool) -> str:
         padding-bottom: 3rem !important;
     }}
 
-    /* ================================================================
-       MATERIAL SYMBOLS
-    ================================================================ */
     .ms {{
         font-family: 'Material Symbols Rounded';
         font-size: 24px;
@@ -272,9 +256,6 @@ def build_css(colors: dict, light: bool) -> str:
         -webkit-font-smoothing: antialiased;
     }}
 
-    /* ================================================================
-       PAGE TITLE — Grand écran
-    ================================================================ */
     .app-title {{
         display: flex;
         align-items: center;
@@ -283,10 +264,7 @@ def build_css(colors: dict, light: bool) -> str:
         border-bottom: 2px solid var(--border-subtle);
         margin-bottom: 2rem;
     }}
-    .app-title .ms {{
-        font-size: 48px;
-        color: var(--accent);
-    }}
+    .app-title .ms {{ font-size: 48px; color: var(--accent); }}
     .app-title h1 {{
         margin: 0;
         font-size: 2.4rem;
@@ -302,9 +280,6 @@ def build_css(colors: dict, light: bool) -> str:
         margin-top: 3px;
     }}
 
-    /* ================================================================
-       SECTION HEADERS
-    ================================================================ */
     .section-header {{
         display: flex;
         align-items: center;
@@ -312,10 +287,7 @@ def build_css(colors: dict, light: bool) -> str:
         margin-bottom: 1.5rem;
         margin-top: 0.8rem;
     }}
-    .section-header .ms {{
-        font-size: 32px;
-        color: var(--accent);
-    }}
+    .section-header .ms {{ font-size: 32px; color: var(--accent); }}
     .section-header h3 {{
         margin: 0;
         font-size: 1.6rem;
@@ -323,9 +295,6 @@ def build_css(colors: dict, light: bool) -> str:
         color: var(--text-primary);
     }}
 
-    /* ================================================================
-       KPI CARDS — Plus grandes, plus lisibles
-    ================================================================ */
     .kpi-row {{
         display: flex;
         gap: 16px;
@@ -346,11 +315,7 @@ def build_css(colors: dict, light: bool) -> str:
         transform: translateY(-2px);
         box-shadow: 0 6px 20px var(--shadow);
     }}
-    .kpi-card .kpi-icon {{
-        font-size: 30px;
-        margin-bottom: 8px;
-        color: var(--text-primary);
-    }}
+    .kpi-card .kpi-icon {{ font-size: 30px; margin-bottom: 8px; color: var(--text-primary); }}
     .kpi-card .kpi-value {{
         font-size: 3rem;
         font-weight: 800;
@@ -372,16 +337,12 @@ def build_css(colors: dict, light: bool) -> str:
     .kpi-card.kpi-blue .kpi-icon, .kpi-card.kpi-blue .kpi-icon .ms,
     .kpi-card.kpi-blue .kpi-value {{ color: #58a6ff !important; }}
 
-    /* ================================================================
-       TABS — Plus visibles
-    ================================================================ */
     [data-testid="stTabs"] [role="tablist"] {{
         display: flex !important;
         justify-content: space-between !important;
         width: 100% !important;
         gap: 10px !important;
     }}
-
     [data-testid="stTabs"] [role="tab"] {{
         flex: 1 !important;
         height: auto !important;
@@ -389,37 +350,27 @@ def build_css(colors: dict, light: bool) -> str:
         font-size: 1.1rem !important;
         font-weight: 600 !important;
     }}
-
-    /* Style par défaut (Inactif) */
     [data-testid="stTabs"] [role="tab"] p {{
         font-size: 1.5rem !important;
         font-weight: 700 !important;
         color: var(--text-primary) !important;
         transition: color 0.3s ease !important;
     }}
-
     [data-testid="stTabs"] [role="tab"] [data-testid="stIconMaterial"] {{
         font-size: 1.8rem !important;
         margin-right: 10px !important;
         transition: color 0.3s ease !important;
     }}
-
-    /* --- ÉTAT ACTIF : Texte ET Icône en bleu --- */
     [data-testid="stTabs"] [aria-selected="true"] p,
     [data-testid="stTabs"] [aria-selected="true"] [data-testid="stIconMaterial"] {{
         color: var(--accent) !important;
     }}
-
-    /* Effet au survol pour l'interactivité */
     [data-testid="stTabs"] [role="tab"]:hover p,
     [data-testid="stTabs"] [role="tab"]:hover [data-testid="stIconMaterial"] {{
         color: var(--accent) !important;
         opacity: 0.8;
     }}
 
-    /* ================================================================
-       NUMBER BADGES — Plus grands
-    ================================================================ */
     .num-badge {{
         display: inline-flex;
         align-items: center;
@@ -435,9 +386,6 @@ def build_css(colors: dict, light: bool) -> str:
         box-shadow: 0 2px 6px rgba(9,105,218,0.3);
     }}
 
-    /* ================================================================
-       STATUS BADGES — Plus grands, plus lisibles
-    ================================================================ */
     .badge {{
         display: inline-flex;
         align-items: center;
@@ -453,9 +401,6 @@ def build_css(colors: dict, light: bool) -> str:
     .badge-attente    {{ background: rgba(139,148,158,0.15);color: var(--text-muted); border: 2px solid rgba(139,148,158,0.4); }}
     .badge-suppleant  {{ background: rgba(88,166,255,0.15); color: #58a6ff; border: 2px solid rgba(88,166,255,0.4); }}
 
-    /* ================================================================
-       CANDIDATE LIST — Lignes plus aérées
-    ================================================================ */
     .candidate-name {{
         font-weight: 700;
         font-size: 1.1rem;
@@ -479,59 +424,45 @@ def build_css(colors: dict, light: bool) -> str:
         border: 1px solid rgba(9,105,218,0.15);
     }}
 
-    /* ================================================================
-       QUOTA CARDS
-    ================================================================ */
     .quota-grid {{
         display: flex;
         gap: 14px;
         flex-wrap: wrap;
         margin-bottom: 1.2rem;
     }}
-    .quota-card .quota-filiere {{
-        font-weight: 700;
-        font-size: 1rem;
-        color: var(--text-primary);
-        margin-bottom: 6px;
-    }}
-    
-    .quota-card .quota-bar-fill {{
-        height: 100%;
-        border-radius: 4px;
-        transition: width 0.4s ease;
-    }}
-    
     .quota-card {{
         flex: 1;
-        min-width: 220px; /* Légèrement plus large pour accommoder le gros texte */
+        min-width: 220px;
         border-radius: 14px;
-        padding: 1.5rem !important; /* Plus de padding interne */
+        padding: 1.5rem !important;
         border: 2px solid var(--border);
         background: var(--bg-card);
         box-shadow: 0 2px 6px var(--shadow);
     }}
-
     .quota-card .quota-filiere {{
         font-weight: 800;
-        font-size: 1.2rem !important; /* Augmenté de 1rem à 1.2rem */
+        font-size: 1.2rem !important;
         color: var(--text-primary);
         margin-bottom: 10px;
         line-height: 1.2;
     }}
-
     .quota-card .quota-text {{
-        font-size: 1.1rem !important; /* Augmenté de 0.9rem à 1.1rem */
+        font-size: 1.1rem !important;
         color: var(--text-muted);
         font-weight: 700;
         margin-top: 8px;
     }}
-    
     .quota-card .quota-bar {{
-        height: 12px !important; /* Barre de progression plus épaisse */
+        height: 12px !important;
         border-radius: 6px;
         background: var(--bg-dark);
         margin: 12px 0;
         overflow: hidden;
+    }}
+    .quota-card .quota-bar-fill {{
+        height: 100%;
+        border-radius: 4px;
+        transition: width 0.4s ease;
     }}
     .quota-ok {{ border-color: rgba(9,105,218,0.35); }}
     .quota-ok .quota-bar-fill {{ background: #0969da; }}
@@ -539,9 +470,6 @@ def build_css(colors: dict, light: bool) -> str:
     .quota-full .quota-bar-fill {{ background: #3fb950; }}
     .quota-full .quota-text {{ color: #3fb950; }}
 
-    /* ================================================================
-       CANDIDAT INFO CARD
-    ================================================================ */
     .candidat-card {{
         background: var(--bg-card);
         border: 2px solid var(--border);
@@ -564,9 +492,6 @@ def build_css(colors: dict, light: bool) -> str:
         font-size: 0.95rem;
     }}
 
-    /* ================================================================
-       EXPORT CARDS
-    ================================================================ */
     .export-card {{
         background: var(--bg-card);
         border: 2px solid var(--border);
@@ -580,11 +505,7 @@ def build_css(colors: dict, light: bool) -> str:
         border-color: var(--accent);
         box-shadow: 0 4px 14px var(--shadow);
     }}
-    .export-card-header {{
-        display: flex;
-        align-items: flex-start;
-        gap: 14px;
-    }}
+    .export-card-header {{ display: flex; align-items: flex-start; gap: 14px; }}
     .export-card-title {{
         font-size: 1.2rem;
         font-weight: 700;
@@ -597,11 +518,8 @@ def build_css(colors: dict, light: bool) -> str:
         line-height: 1.4;
     }}
 
-    /* ================================================================
-       NIVEAU LABEL
-    ================================================================ */
     .niveau-label {{
-        font-size: 1.4rem !important; /* Augmenté de 1rem à 1.4rem */
+        font-size: 1.4rem !important;
         font-weight: 800;
         color: var(--accent);
         text-transform: uppercase;
@@ -612,9 +530,6 @@ def build_css(colors: dict, light: bool) -> str:
         padding-left: 15px;
     }}
 
-    /* ================================================================
-       TRANSFER CARD (Réallocation)
-    ================================================================ */
     .transfer-card {{
         background: var(--bg-card);
         border: 2px solid var(--border);
@@ -634,9 +549,6 @@ def build_css(colors: dict, light: bool) -> str:
         color: var(--text-primary);
     }}
 
-    /* ================================================================
-       ALERT QUOTA
-    ================================================================ */
     .alert-quota {{
         display: flex;
         align-items: center;
@@ -651,9 +563,6 @@ def build_css(colors: dict, light: bool) -> str:
     }}
     .alert-quota .ms {{ font-size: 22px; }}
 
-    /* ================================================================
-       FORM CONTROLS — Plus grands pour la lisibilité TV
-    ================================================================ */
     [data-testid="stTextInput"] input,
     [data-testid="stNumberInput"] input {{
         font-size: 1.05rem !important;
@@ -676,17 +585,9 @@ def build_css(colors: dict, light: bool) -> str:
         border-bottom-color: var(--accent) !important;
         box-shadow: 0 0 0 3px rgba(9,105,218,0.15) !important;
     }}
-    [data-baseweb="select"] > div {{
-        min-height: 44px !important;
-    }}
-    label {{
-        font-size: 1rem !important;
-        font-weight: 600 !important;
-    }}
+    [data-baseweb="select"] > div {{ min-height: 44px !important; }}
+    label {{ font-size: 1rem !important; font-weight: 600 !important; }}
 
-    /* ================================================================
-       BUTTONS — Taille TV
-    ================================================================ */
     button[data-testid^="stBaseButton"] {{
         font-size: 1rem !important;
         font-weight: 600 !important;
@@ -700,23 +601,16 @@ def build_css(colors: dict, light: bool) -> str:
         box-shadow: 0 3px 10px rgba(9,105,218,0.35) !important;
     }}
 
-    /* ================================================================
-       ACTION BUTTONS — Couleurs par position
-    ================================================================ */
     div[data-testid="stColumn"]:last-child div[data-testid="stHorizontalBlock"] button {{
         transition: all 0.2s ease-in-out !important;
         border: 1px solid transparent !important;
         background-color: transparent !important;
         border-radius: 8px !important;
     }}
-
-    /* Hover commun : léger fond gris et ombre */
     div[data-testid="stColumn"]:last-child div[data-testid="stHorizontalBlock"] button:hover:not(:disabled) {{
         transform: translateY(-2px);
         box-shadow: 0 4px 8px var(--shadow) !important;
     }}
-
-    /* --- Bouton FAVORABLE (Vert) --- */
     div[data-testid="stColumn"]:last-child div[data-testid="stHorizontalBlock"] > div[data-testid="stColumn"]:nth-child(1) button span[data-testid="stIconMaterial"] {{
         color: #3fb950 !important;
     }}
@@ -724,8 +618,6 @@ def build_css(colors: dict, light: bool) -> str:
         background-color: rgba(63, 185, 80, 0.1) !important;
         border-color: rgba(63, 185, 80, 0.4) !important;
     }}
-
-    /* --- Bouton DÉFAVORABLE (Rouge) --- */
     div[data-testid="stColumn"]:last-child div[data-testid="stHorizontalBlock"] > div[data-testid="stColumn"]:nth-child(2) button span[data-testid="stIconMaterial"] {{
         color: #f85149 !important;
     }}
@@ -733,8 +625,6 @@ def build_css(colors: dict, light: bool) -> str:
         background-color: rgba(248, 81, 73, 0.1) !important;
         border-color: rgba(248, 81, 73, 0.4) !important;
     }}
-
-    /* --- Bouton SUPPLÉANT (Bleu) --- */
     div[data-testid="stColumn"]:last-child div[data-testid="stHorizontalBlock"] > div[data-testid="stColumn"]:nth-child(3) button span[data-testid="stIconMaterial"] {{
         color: #58a6ff !important;
     }}
@@ -742,8 +632,6 @@ def build_css(colors: dict, light: bool) -> str:
         background-color: rgba(88, 166, 255, 0.1) !important;
         border-color: rgba(88, 166, 255, 0.4) !important;
     }}
-
-    /* --- Bouton EN ATTENTE (Orange) --- */
     div[data-testid="stColumn"]:last-child div[data-testid="stHorizontalBlock"] > div[data-testid="stColumn"]:nth-child(4) button span[data-testid="stIconMaterial"] {{
         color: #d29922 !important;
     }}
@@ -757,37 +645,24 @@ def build_css(colors: dict, light: bool) -> str:
         filter: grayscale(1);
         cursor: not-allowed !important;
     }}
-    
     div[data-testid="stColumn"]:last-child div[data-testid="stHorizontalBlock"] {{
         gap: 0.5rem !important;
         align-items: center;
     }}
 
-    /* ================================================================
-       DIVIDERS — Respiration entre les lignes
-    ================================================================ */
     [data-testid="stDivider"] hr {{
         margin: 0.6rem 0 !important;
         border-width: 1px !important;
         opacity: 0.5 !important;
     }}
 
-    /* ================================================================
-       PROGRESS BAR
-    ================================================================ */
     [data-testid="stProgress"] [role="progressbar"] > div > div > div {{
         background-color: #0969da !important;
     }}
 
-    /* ================================================================
-       HIDE DEFAULT HEADER/FOOTER
-    ================================================================ */
     header[data-testid="stHeader"] {{ background: transparent; }}
     .stDeployButton {{ display: none; }}
 
-    /* ================================================================
-       STICKY HEADER
-    ================================================================ */
     .sticky-header {{
         position: fixed !important;
         top: 0;
@@ -800,80 +675,60 @@ def build_css(colors: dict, light: bool) -> str:
         box-shadow: 0 2px 12px var(--shadow);
     }}
 
-    /* ================================================================
-       SIDEBAR
-    ================================================================ */
-    section[data-testid="stSidebar"] .stMarkdown h3 {{
-        font-size: 1.2rem;
-    }}
+    section[data-testid="stSidebar"] .stMarkdown h3 {{ font-size: 1.2rem; }}
     section[data-testid="stSidebar"] p,
     section[data-testid="stSidebar"] span,
-    section[data-testid="stSidebar"] label {{
-        font-size: 1rem !important;
-    }}
+    section[data-testid="stSidebar"] label {{ font-size: 1rem !important; }}
 
     {light_overrides}
 </style>
 """
 
 
-def get_sidebar_style(progress_color):
+def get_sidebar_style(progress_color: str) -> str:
+    logo_data = get_logo_b64()
     return f"""
     <style>
         [data-testid="stSidebar"] {{
             background-color: rgba(0, 135, 81, 0.1) !important;
             backdrop-filter: blur(12px);
         }}
-        
         [data-testid="stSidebarHeader"] {{
-            background-image: url("data:image/png;base64,{LOGO_DATA}");
+            background-image: url("data:image/png;base64,{logo_data}");
             background-repeat: no-repeat;
             background-size: contain;
             background-position: center;
             height: 120px;
             margin-bottom: 20px;
         }}
-
-        /* Ajustement des textes de la sidebar pour qu'ils ressortent sur le vert */
         [data-testid="stSidebar"] .stMarkdown p {{
-            font-size: 1.2rem !important; /* Augmenté */
+            font-size: 1.2rem !important;
             line-height: 1.4 !important;
             color: #004d2e !important;
             font-weight: 600 !important;
         }}
-
-        /* Augmenter la taille des labels (ex: titres de filtres ou selectbox) */
         [data-testid="stSidebar"] label {{
             font-size: 1.1rem !important;
             color: #004d2e !important;
             font-weight: 700 !important;
         }}
-
-        [data-testid="stSidebarCollapseButton"] {{
-            display: none;
-        }}
-
+        [data-testid="stSidebarCollapseButton"] {{ display: none; }}
         [data-testid="stSidebarContent"] {{
             padding-top: 0rem !important;
             background-color: transparent !important;
         }}
-
         div[data-testid="stProgress"] > div > div > div > div {{
             background-color: {progress_color} !important;
             transition: background-color 0.5s ease;
         }}
-
         [data-testid="stCaptionContainer"] {{
             font-weight: 700;
             letter-spacing: 1px;
             text-transform: uppercase;
-            font-size: 1.1rem !important; /* Augmenté de 1rem à 1.1rem */
+            font-size: 1.1rem !important;
             color: rgba(0, 77, 46, 0.7) !important;
             margin-top: 1.2rem;
         }}
-        
-        
-        /* Bouton rouge (Déconnexion) spécifique à la sidebar */
         [data-testid="stSidebar"] button[kind="secondary"] {{
             border: 2px solid #ff4b4b !important;
             color: #ff4b4b !important;
@@ -885,19 +740,15 @@ def get_sidebar_style(progress_color):
             padding: 0.6rem 1rem !important;
             margin-top: auto;
         }}
-
         [data-testid="stSidebar"] button[kind="secondary"]:hover {{
             background-color: #ff4b4b !important;
             color: white !important;
             box-shadow: 0 4px 14px rgba(255, 75, 75, 0.35);
         }}
-        
-        .sidebar-status-container {{
-            padding: 1rem 0;
-        }}
+        .sidebar-status-container {{ padding: 1rem 0; }}
         .sidebar-title {{
             color: #004d2e !important;
-            font-size: 20px !important; /* Augmenté */
+            font-size: 20px !important;
             font-weight: 800 !important;
             margin-bottom: 1.5rem !important;
         }}
@@ -908,12 +759,12 @@ def get_sidebar_style(progress_color):
             margin-bottom: 15px;
         }}
         .progression-label {{
-            font-size: 2.5rem !important; /* Très gros */
+            font-size: 2.5rem !important;
             font-weight: 700 !important;
             color: #004d2e !important;
         }}
         .progression-pct {{
-            font-size: 2.5rem !important; /* Encore plus gros */
+            font-size: 2.5rem !important;
             font-weight: 800 !important;
             color: #0969da !important;
         }}
@@ -928,13 +779,17 @@ def get_sidebar_style(progress_color):
 
 
 def build_sticky_js(colors: dict) -> str:
-    """Retourne le snippet JavaScript pour le header sticky."""
+    """
+    ✅ OPTIMISATION : MutationObserver avec debounce de 150ms.
+    Sans ça, chaque micro-modification du DOM (reruns rapides Streamlit)
+    déclenchait une mise à jour immédiate → boucle infinie → crash WebSocket.
+    """
     return f"""
 <script>
 (function() {{
     const doc = window.parent.document;
     const titleEl = doc.querySelector('.app-title');
-    const kpiEl = doc.querySelector('#kpi-row');
+    const kpiEl   = doc.querySelector('#kpi-row');
     if (!titleEl || !kpiEl) return;
 
     const existing = doc.getElementById('sticky-clone');
@@ -952,32 +807,33 @@ def build_sticky_js(colors: dict) -> str:
     header.innerHTML = `
         <div style="display:flex;align-items:center;gap:12px;margin-bottom:0.5rem">
             <span class="ms" style="font-size:28px;color:{colors["accent"]};font-family:'Material Symbols Rounded'">school</span>
-            <span style="font-size:1.4rem;font-weight:800;color:{colors["text_primary"]}">CNaBAU — Bourse de Russie</span>
+            <span style="font-size:1.4rem;font-weight:800;color:{colors["text_primary"]}">CNBAU — Bourse de Russie</span>
         </div>
     `;
+
     const kpiClone = kpiEl.cloneNode(true);
     kpiClone.removeAttribute('id');
-    kpiClone.querySelectorAll('.kpi-card').forEach(c => {{
-        c.style.padding = '0.5rem 0.7rem';
-    }});
+    kpiClone.querySelectorAll('.kpi-card').forEach(c => {{ c.style.padding = '0.5rem 0.7rem'; }});
     kpiClone.querySelectorAll('.kpi-value').forEach(v => {{
-        v.style.fontSize = '2.5rem';  // Taille massive pour les chiffres
+        v.style.fontSize  = '2.5rem';
         v.style.fontWeight = '900';
-        v.style.color = '{colors["accent"]}';
+        v.style.color     = '{colors["accent"]}';
     }});
     header.appendChild(kpiClone);
+
     const stApp = doc.querySelector('[data-testid="stApp"]') || doc.body;
     stApp.appendChild(header);
 
-    const scrollContainer = doc.querySelector('[data-testid="stMainBlockContainer"]')
-        || doc.querySelector('section[data-testid="stMain"]')
-        || doc.querySelector('.main');
+    // --- Scroll sentinel ---
     const sentinel = titleEl.closest('[data-testid="element-container"]') || titleEl;
-
     function checkScroll() {{
         const rect = sentinel.getBoundingClientRect();
         header.style.display = rect.bottom < 0 ? 'block' : 'none';
     }}
+
+    const scrollContainer = doc.querySelector('[data-testid="stMainBlockContainer"]')
+        || doc.querySelector('section[data-testid="stMain"]')
+        || doc.querySelector('.main');
 
     let el = scrollContainer;
     while (el && el !== doc.documentElement) {{
@@ -990,24 +846,24 @@ def build_sticky_js(colors: dict) -> str:
     window.parent.addEventListener('scroll', checkScroll, true);
     checkScroll();
 
+    // ✅ DEBOUNCE 150ms : évite les mises à jour en rafale lors des reruns rapides
+    let _debounceTimer = null;
     const observer = new MutationObserver(() => {{
-        const freshKpi = doc.querySelector('#kpi-row');
-        if (!freshKpi) return;
-        const oldClone = header.querySelector('.kpi-row');
-        if (oldClone) oldClone.remove();
-        const newClone = freshKpi.cloneNode(true);
-        newClone.removeAttribute('id');
-        newClone.querySelectorAll('.kpi-card').forEach(c => {{
-            c.style.padding = '0.5rem 0.7rem';
-        }});
-        newClone.querySelectorAll('.kpi-value').forEach(v => {{
-            v.style.fontSize = '1.4rem';
-        }});
-        header.appendChild(newClone);
+        clearTimeout(_debounceTimer);
+        _debounceTimer = setTimeout(() => {{
+            const freshKpi = doc.querySelector('#kpi-row');
+            if (!freshKpi) return;
+            const oldClone = header.querySelector('.kpi-row');
+            if (oldClone) oldClone.remove();
+            const newClone = freshKpi.cloneNode(true);
+            newClone.removeAttribute('id');
+            newClone.querySelectorAll('.kpi-card').forEach(c => {{ c.style.padding = '0.5rem 0.7rem'; }});
+            newClone.querySelectorAll('.kpi-value').forEach(v => {{ v.style.fontSize = '1.4rem'; }});
+            header.appendChild(newClone);
+        }}, 150);  // 150ms de délai — absorbe les reruns rapides
     }});
+
     observer.observe(kpiEl, {{ childList: true, subtree: true, characterData: true }});
 }})();
 </script>
 """
-
-
