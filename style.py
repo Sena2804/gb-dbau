@@ -15,7 +15,7 @@ def get_logo_b64() -> str:
     return ""
 
 
-NIVEAU_ORDER = ["Licence", "Master", "Doctorat", "Spécialisation"]
+NIVEAU_ORDER = ["Licence", "Master", "Doctorat", "Spécialité médicale"]
 
 
 def get_colors(light: bool) -> dict:
@@ -807,7 +807,7 @@ def build_sticky_js(colors: dict) -> str:
     header.innerHTML = `
         <div style="display:flex;align-items:center;gap:12px;margin-bottom:0.5rem">
             <span class="ms" style="font-size:28px;color:{colors["accent"]};font-family:'Material Symbols Rounded'">school</span>
-            <span style="font-size:1.4rem;font-weight:800;color:{colors["text_primary"]}">CNaBAU — Bourse de Russie</span>
+            <span style="font-size:1.4rem;font-weight:800;color:{colors["text_primary"]}">CNaBAU — Bourse du Maroc</span>
         </div>
     `;
 
