@@ -79,11 +79,11 @@ def render_quota_grid(niveau: str, niveau_quotas: dict, fav_counts: dict) -> str
 def render_candidat_card(candidat: dict) -> str:
     """Retourne la fiche HTML d'un candidat."""
     numero        = html_escape(str(candidat.get("numero") or ""))
-    id_russe      = html_escape(str(candidat.get("id_russe") or candidat.get("id_demande", "")))
     sexe          = html_escape(str(candidat.get("sexe") or ""))
     date_lieu     = html_escape(str(candidat.get("date_lieu_naissance") or ""))
     diplome       = html_escape(str(candidat.get("diplome_filiere_annee") or ""))
     observation   = html_escape(str(candidat.get("observation") or ""))
+    moyenne       = html_escape(str(candidat.get("moyenne") or ""))
     name          = html_escape(str(candidat["name"]))
     filiere_val   = html_escape(str(candidat["filiere"]))
     niveau_val    = html_escape(str(candidat["niveau_etudes"]))
@@ -92,13 +92,13 @@ def render_candidat_card(candidat: dict) -> str:
 
     rows = "".join([
         f"<tr><td>N°</td><td>{numero}</td></tr>",
-        f"<tr><td>ID Russe</td><td>{id_russe}</td></tr>",
         f"<tr><td>Nom</td><td><strong>{name}</strong></td></tr>",
         f"<tr><td>Sexe</td><td>{sexe}</td></tr>",
         f"<tr><td>Naissance</td><td>{date_lieu}</td></tr>",
         f"<tr><td>Filière</td><td>{filiere_val}</td></tr>",
         f"<tr><td>Niveau</td><td>{niveau_val}</td></tr>",
         f"<tr><td>Diplôme</td><td>{diplome}</td></tr>",
+        f"<tr><td>Moyenne / Mention</td><td>{moyenne}</td></tr>",
         obs_row,
         f"<tr><td>Avis</td><td>{render_status(candidat['avis'])}</td></tr>",
     ])
