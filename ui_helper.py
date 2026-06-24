@@ -12,14 +12,26 @@ def icon(name: str) -> str:
     return f'<span class="ms">{name}</span>'
 
 
-def render_status(avis: str) -> str:
+def format_suppleant_rank(rank: int | None) -> str:
+    """Retourne le libellé ordinal d'un rang de suppléant."""
+    try:
+        rank = int(rank)
+    except (TypeError, ValueError):
+        return ""
+    if rank <= 0:
+        return ""
+    return "1er suppléant" if rank == 1 else f"{rank}e suppléant"
+
+
+def render_status(avis: str, rang_suppleant: int | None = None) -> str:
     """Retourne le badge HTML coloré selon l'avis."""
     if avis == "Favorable":
         return '<span class="badge badge-favorable"><span class="ms">check_circle</span>Favorable</span>'
     if avis == "Défavorable":
         return '<span class="badge badge-defavorable"><span class="ms">cancel</span>Défavorable</span>'
     if avis == "Suppléant":
-        return '<span class="badge badge-suppleant"><span class="ms">group_add</span>Suppléant</span>'
+        label = format_suppleant_rank(rang_suppleant) or "Suppléant"
+        return f'<span class="badge badge-suppleant"><span class="ms">group_add</span>{label}</span>'
     return '<span class="badge badge-attente"><span class="ms">schedule</span>En attente</span>'
 
 
@@ -87,6 +99,7 @@ def render_candidat_card(candidat: dict) -> str:
     name          = html_escape(str(candidat["name"]))
     filiere_val   = html_escape(str(candidat["filiere"]))
     niveau_val    = html_escape(str(candidat["niveau_etudes"]))
+    rang_suppleant = candidat.get("rang_suppleant")
 
     obs_row = f"<tr><td>Observation</td><td><em>{observation}</em></td></tr>" if observation else ""
 
@@ -100,7 +113,7 @@ def render_candidat_card(candidat: dict) -> str:
         f"<tr><td>Diplôme</td><td>{diplome}</td></tr>",
         f"<tr><td>Moyenne / Mention</td><td>{moyenne}</td></tr>",
         obs_row,
-        f"<tr><td>Avis</td><td>{render_status(candidat['avis'])}</td></tr>",
+        f"<tr><td>Avis</td><td>{render_status(candidat['avis'], rang_suppleant)}</td></tr>",
     ])
     return f'<div class="candidat-card"><table>{rows}</table></div>'
 

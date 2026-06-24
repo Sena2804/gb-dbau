@@ -33,6 +33,7 @@ Développer une application web **légère, déployable localement**, permettant
 - **Charger** les dossiers de candidature depuis un fichier Excel
 - **Parcourir et filtrer** les candidatures en temps réel
 - **Attribuer** les avis (Favorable, Défavorable, Suppléant, En attente) avec contrôle automatique des quotas
+- **Classer automatiquement** les suppléants par ordre de sélection, au sein de chaque niveau et filière
 - **Réallouer** les places non utilisées entre filières sans modifier le total de 80 bourses
 - **Exporter** les décisions sous forme de documents officiels (Word et Excel)
 
@@ -116,6 +117,7 @@ Table SQLite candidatures
 - Tableau paginé (15 lignes/page) trié par niveau → filière → moyenne
 - Boutons d'action rapide par candidat (Favorable / Défavorable / Suppléant / En attente)
 - Bouton « Favorable » automatiquement désactivé si le quota de la filière est atteint
+- Rang visible pour chaque suppléant (`1er suppléant`, `2e suppléant`, etc.)
 
 #### Onglet 2 — Suivi des quotas
 - Grille de cartes organisée par niveau d'études
@@ -143,6 +145,9 @@ Quatre formats d'export disponibles :
 | Word — Toutes les décisions | Document complet : Titulaires + Suppléants + Défavorables |
 | Excel — Candidatures par avis | Classeur avec une feuille par catégorie d'avis |
 | Excel — Grille des quotas | Tableau de synthèse : filière / places / favorables / restantes |
+
+Les exports Word et Excel affichent le rang des suppléants. Lorsqu'un suppléant
+reçoit un autre avis, les rangs suivants sont automatiquement recalculés sans trou.
 
 #### Sidebar
 - Indicateur de progression global : `X / 80 bourses accordées`

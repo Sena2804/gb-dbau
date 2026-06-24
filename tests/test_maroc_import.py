@@ -1,8 +1,11 @@
+import math
+import sqlite3
 import tempfile
 import unittest
 from pathlib import Path
 
-from openpyxl import Workbook
+from docx import Document
+from openpyxl import Workbook, load_workbook
 
 import database as db
 
@@ -152,6 +155,97 @@ class MarocImportTest(unittest.TestCase):
                 self.assertEqual(candidates.iloc[1]["avis"], "En attente")
                 self.assertIn("BAC ETRANGER", candidates.iloc[1]["observation"])
                 self.assertEqual(quotas, {("Bac + 2 ans", "Génie Electrique"): 2})
+        finally:
+            db.DB_PATH = original_db_path
+
+    def test_assigns_reorders_and_exports_suppleant_ranks(self):
+        original_db_path = db.DB_PATH
+        try:
+            with tempfile.TemporaryDirectory() as tmp:
+                db.DB_PATH = str(Path(tmp) / "session.db")
+                workbook_path = Path(tmp) / "maroc_fp.xlsx"
+                create_professional_workbook(workbook_path)
+                db.init_db()
+                db.load_excel_to_db(str(workbook_path))
+
+                db.update_avis("MAR-0001/26", "Suppléant")
+                db.update_avis("MAR-0002/26", "Suppléant")
+                candidates = db.get_all_candidatures().sort_values("numero")
+                self.assertEqual(list(candidates["rang_suppleant"]), [1, 2])
+
+                db.update_avis("MAR-0001/26", "Favorable")
+                candidates = db.get_all_candidatures().sort_values("numero")
+                self.assertTrue(math.isnan(candidates.iloc[0]["rang_suppleant"]))
+                self.assertEqual(candidates.iloc[1]["rang_suppleant"], 1)
+
+                db.update_avis("MAR-0001/26", "Suppléant")
+                candidates = db.get_all_candidatures().sort_values("numero")
+                self.assertEqual(list(candidates["rang_suppleant"]), [2, 1])
+
+                excel_path = Path(tmp) / "decisions.xlsx"
+                word_path = Path(tmp) / "decisions.docx"
+                db.export_avis_to_xlsx(str(excel_path))
+                db.export_to_docx(str(word_path))
+
+                exported = load_workbook(excel_path, data_only=True)
+                sheet = exported["Suppléants"]
+                rank_values = [
+                    cell.value
+                    for row in sheet.iter_rows(min_row=2)
+                    for cell in [row[1]]
+                    if cell.value
+                ]
+                self.assertEqual(rank_values, ["1er suppléant", "2e suppléant"])
+
+                document = Document(word_path)
+                text = "\n".join(
+                    cell.text
+                    for table in document.tables
+                    for row in table.rows
+                    for cell in row.cells
+                )
+                self.assertIn("1er suppléant", text)
+                self.assertIn("2e suppléant", text)
+        finally:
+            db.DB_PATH = original_db_path
+
+    def test_migrates_existing_database_and_assigns_missing_ranks(self):
+        original_db_path = db.DB_PATH
+        try:
+            with tempfile.TemporaryDirectory() as tmp:
+                db.DB_PATH = str(Path(tmp) / "legacy.db")
+                connection = sqlite3.connect(db.DB_PATH)
+                connection.execute("""
+                    CREATE TABLE candidatures (
+                        id_demande TEXT PRIMARY KEY,
+                        id_russe TEXT,
+                        numero INTEGER,
+                        sexe TEXT,
+                        name TEXT NOT NULL,
+                        date_lieu_naissance TEXT,
+                        diplome_filiere_annee TEXT,
+                        moyenne TEXT,
+                        observation TEXT,
+                        filiere TEXT NOT NULL,
+                        niveau_etudes TEXT NOT NULL,
+                        avis TEXT DEFAULT 'En attente'
+                    )
+                """)
+                connection.executemany(
+                    """INSERT INTO candidatures
+                       (id_demande, numero, name, filiere, niveau_etudes, avis)
+                       VALUES (?, ?, ?, ?, ?, 'Suppléant')""",
+                    [
+                        ("MAR-0004/26", 4, "QUATRIEME", "Génie Electrique", "Bac + 2 ans"),
+                        ("MAR-0003/26", 3, "TROISIEME", "Génie Electrique", "Bac + 2 ans"),
+                    ],
+                )
+                connection.commit()
+                connection.close()
+
+                db.init_db()
+                candidates = db.get_all_candidatures().sort_values("numero")
+                self.assertEqual(list(candidates["rang_suppleant"]), [1, 2])
         finally:
             db.DB_PATH = original_db_path
 

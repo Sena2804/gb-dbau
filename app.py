@@ -283,7 +283,7 @@ with tab_liste:
                 unsafe_allow_html=True,
             )
             cols[5].markdown(
-                f'<div style="padding:10px 0">{render_status(avis)}</div>',
+                f'<div style="padding:10px 0">{render_status(avis, row.get("rang_suppleant"))}</div>',
                 unsafe_allow_html=True,
             )
 
@@ -362,6 +362,7 @@ with tab_quotas:
 with tab_eval:
     st.markdown("<div style='height:1rem'></div>", unsafe_allow_html=True)
     st.markdown(section_header("gavel", "Recherche et Décision"), unsafe_allow_html=True)
+    st.caption("Les suppléants sont classés automatiquement par ordre de sélection dans chaque filière.")
 
     CRITERES = {"N°": "numero", "Nom": "name"}
     col_crit, col_search = st.columns([1, 3])

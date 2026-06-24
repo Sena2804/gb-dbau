@@ -68,9 +68,16 @@ def init_db():
             observation TEXT,
             filiere TEXT NOT NULL,
             niveau_etudes TEXT NOT NULL,
-            avis TEXT DEFAULT 'En attente'
+            avis TEXT DEFAULT 'En attente',
+            rang_suppleant INTEGER
         )
     """)
+    columns = {
+        row["name"]
+        for row in conn.execute("PRAGMA table_info(candidatures)").fetchall()
+    }
+    if "rang_suppleant" not in columns:
+        conn.execute("ALTER TABLE candidatures ADD COLUMN rang_suppleant INTEGER")
     conn.execute("""
         CREATE TABLE IF NOT EXISTS quotas (
             niveau_etudes TEXT NOT NULL,
@@ -79,6 +86,7 @@ def init_db():
             PRIMARY KEY (niveau_etudes, filiere)
         )
     """)
+    _normalize_all_suppleant_ranks(conn)
     conn.commit()
     conn.close()
 
@@ -419,14 +427,98 @@ def get_favorables_count() -> dict:
     return {(r["niveau_etudes"], r["filiere"]): r["n"] for r in rows}
 
 
+def _normalize_suppleant_ranks(conn: sqlite3.Connection, niveau: str, filiere: str):
+    rows = conn.execute(
+        """SELECT id_demande
+           FROM candidatures
+           WHERE avis = 'Suppléant'
+             AND niveau_etudes = ?
+             AND filiere = ?
+           ORDER BY
+             CASE WHEN rang_suppleant IS NULL THEN 1 ELSE 0 END,
+             rang_suppleant,
+             numero,
+             id_demande""",
+        (niveau, filiere),
+    ).fetchall()
+    for rank, row in enumerate(rows, 1):
+        conn.execute(
+            "UPDATE candidatures SET rang_suppleant = ? WHERE id_demande = ?",
+            (rank, row["id_demande"]),
+        )
+
+
+def _normalize_all_suppleant_ranks(conn: sqlite3.Connection):
+    groups = conn.execute(
+        """SELECT DISTINCT niveau_etudes, filiere
+           FROM candidatures
+           WHERE avis = 'Suppléant'"""
+    ).fetchall()
+    for group in groups:
+        _normalize_suppleant_ranks(conn, group["niveau_etudes"], group["filiere"])
+    conn.execute(
+        "UPDATE candidatures SET rang_suppleant = NULL WHERE avis != 'Suppléant'"
+    )
+
+
+def format_suppleant_rank(rank: int | None) -> str:
+    try:
+        rank = int(rank)
+    except (TypeError, ValueError):
+        return ""
+    if rank <= 0:
+        return ""
+    return "1er suppléant" if rank == 1 else f"{rank}e suppléant"
+
+
 def update_avis(id_demande: str, avis: str):
     conn = get_connection()
-    conn.execute(
-        "UPDATE candidatures SET avis = ? WHERE id_demande = ?",
-        (avis, id_demande),
-    )
-    conn.commit()
-    conn.close()
+    try:
+        candidate = conn.execute(
+            """SELECT niveau_etudes, filiere, avis, rang_suppleant
+               FROM candidatures WHERE id_demande = ?""",
+            (id_demande,),
+        ).fetchone()
+        if not candidate:
+            return
+
+        niveau = candidate["niveau_etudes"]
+        filiere = candidate["filiere"]
+        old_avis = candidate["avis"]
+
+        if avis == "Suppléant" and old_avis != "Suppléant":
+            next_rank = conn.execute(
+                """SELECT COALESCE(MAX(rang_suppleant), 0) + 1
+                   FROM candidatures
+                   WHERE avis = 'Suppléant'
+                     AND niveau_etudes = ?
+                     AND filiere = ?""",
+                (niveau, filiere),
+            ).fetchone()[0]
+            conn.execute(
+                """UPDATE candidatures
+                   SET avis = 'Suppléant', rang_suppleant = ?
+                   WHERE id_demande = ?""",
+                (next_rank, id_demande),
+            )
+        elif avis == "Suppléant":
+            conn.execute(
+                "UPDATE candidatures SET avis = ? WHERE id_demande = ?",
+                (avis, id_demande),
+            )
+        else:
+            conn.execute(
+                """UPDATE candidatures
+                   SET avis = ?, rang_suppleant = NULL
+                   WHERE id_demande = ?""",
+                (avis, id_demande),
+            )
+
+        if old_avis == "Suppléant" or avis == "Suppléant":
+            _normalize_suppleant_ranks(conn, niveau, filiere)
+        conn.commit()
+    finally:
+        conn.close()
 
 
 def search_by_field(field: str, query: str) -> dict | None:
@@ -569,13 +661,13 @@ def _create_base_docx():
             tr.remove(extra_tc)
 
     def add_table_for_section(candidates_list):
-        table = doc.add_table(rows=1, cols=4, style="Table Grid")
+        table = doc.add_table(rows=1, cols=5, style="Table Grid")
 
-        col_widths = [Twips(567), Twips(4254), Twips(4223), Twips(2127)]
+        col_widths = [Twips(567), Twips(1418), Twips(3403), Twips(3403), Twips(2127)]
         for i, width in enumerate(col_widths):
             table.columns[i].width = width
 
-        headers = ["N° ", "FILIERE", "NOM ET PRENOMS", "OBSERVATIONS"]
+        headers = ["N° ", "RANG", "FILIERE", "NOM ET PRENOMS", "OBSERVATIONS"]
         for i, text in enumerate(headers):
             cell = table.rows[0].cells[i]
             cell.text = ""
@@ -589,7 +681,8 @@ def _create_base_docx():
         def sort_key(c):
             niv = c["niveau_etudes"]
             idx = NIVEAU_ORDER.index(niv) if niv in NIVEAU_ORDER else 99
-            return (idx, c["filiere"], c.get("numero", 0) or 0)
+            rank = c.get("rang_suppleant") or 999999
+            return (idx, c["filiere"], rank, c.get("numero", 0) or 0)
 
         candidates_list = sorted(candidates_list, key=sort_key)
 
@@ -619,20 +712,27 @@ def _create_base_docx():
                     run = p.add_run(str(num))
                     set_run_font(run, size=11)
 
-                    cell_fil = row.cells[1]
+                    cell_rank = row.cells[1]
+                    cell_rank.text = ""
+                    p = cell_rank.paragraphs[0]
+                    p.alignment = WD_ALIGN_PARAGRAPH.CENTER
+                    run = p.add_run(format_suppleant_rank(c.get("rang_suppleant")))
+                    set_run_font(run, size=10, bold=bool(c.get("rang_suppleant")))
+
+                    cell_fil = row.cells[2]
                     cell_fil.text = ""
                     if i_in_fil == 0:
                         p = cell_fil.paragraphs[0]
                         run = p.add_run(c["filiere"])
                         set_run_font(run, size=11)
 
-                    cell_name = row.cells[2]
+                    cell_name = row.cells[3]
                     cell_name.text = ""
                     p = cell_name.paragraphs[0]
                     run = p.add_run(c["name"])
                     set_run_font(run, size=11)
 
-                    cell_obs = row.cells[3]
+                    cell_obs = row.cells[4]
                     cell_obs.text = ""
                     p = cell_obs.paragraphs[0]
                     obs = c.get("observation") or ""
@@ -643,7 +743,7 @@ def _create_base_docx():
 
                 last_row_idx = len(table.rows) - 1
                 if last_row_idx > first_row_idx:
-                    table.cell(first_row_idx, 1).merge(table.cell(last_row_idx, 1))
+                    table.cell(first_row_idx, 2).merge(table.cell(last_row_idx, 2))
 
         return table
 
@@ -680,7 +780,9 @@ def export_to_docx(output_path: str) -> str:
     rows = conn.execute(
         """SELECT * FROM candidatures
            WHERE avis IN ('Favorable', 'Suppléant')
-           ORDER BY niveau_etudes, filiere, numero"""
+           ORDER BY niveau_etudes, filiere,
+                    CASE WHEN avis = 'Suppléant' THEN rang_suppleant ELSE numero END,
+                    numero"""
     ).fetchall()
     conn.close()
     candidates = [dict(r) for r in rows]
@@ -716,7 +818,9 @@ def export_all_avis_to_docx(output_path: str) -> str:
     rows = conn.execute(
         """SELECT * FROM candidatures
            WHERE avis IN ('Favorable', 'Suppléant', 'Défavorable')
-           ORDER BY niveau_etudes, filiere, numero"""
+           ORDER BY niveau_etudes, filiere,
+                    CASE WHEN avis = 'Suppléant' THEN rang_suppleant ELSE numero END,
+                    numero"""
     ).fetchall()
     conn.close()
     candidates = [dict(r) for r in rows]
@@ -772,15 +876,17 @@ def export_avis_to_xlsx(output_path: str) -> str:
     header_font  = Font(name="Trebuchet MS", bold=True, size=11)
     header_fill  = PatternFill(start_color="BFBFBF", end_color="BFBFBF", fill_type="solid")
     niveau_fill  = PatternFill(start_color="E7E6E6", end_color="E7E6E6", fill_type="solid")
-    headers      = ["N°", "Filière", "Nom et Prénoms", "Observation"]
-    col_widths   = [8, 45, 35, 25]
+    headers      = ["N°", "Rang suppléant", "Filière", "Nom et Prénoms", "Observation"]
+    col_widths   = [8, 18, 45, 35, 25]
 
     for avis_value, sheet_name in avis_config:
         rows = conn.execute(
-            """SELECT numero, name, filiere, niveau_etudes, observation
+            """SELECT numero, name, filiere, niveau_etudes, observation, rang_suppleant
                FROM candidatures
                WHERE avis = ?
-               ORDER BY niveau_etudes, filiere, numero""",
+               ORDER BY niveau_etudes, filiere,
+                        CASE WHEN avis = 'Suppléant' THEN rang_suppleant ELSE numero END,
+                        numero""",
             (avis_value,),
         ).fetchall()
 
@@ -800,7 +906,8 @@ def export_avis_to_xlsx(output_path: str) -> str:
         def sort_key(c):
             niv = c["niveau_etudes"]
             idx = NIVEAU_ORDER.index(niv) if niv in NIVEAU_ORDER else 99
-            return (idx, c["filiere"], c.get("numero", 0) or 0)
+            rank = c.get("rang_suppleant") or 999999
+            return (idx, c["filiere"], rank, c.get("numero", 0) or 0)
 
         candidates.sort(key=sort_key)
 
@@ -818,9 +925,14 @@ def export_avis_to_xlsx(output_path: str) -> str:
 
             for c in niveau_group:
                 ws.cell(row=current_row, column=1, value=c.get("numero", ""))
-                ws.cell(row=current_row, column=2, value=c.get("filiere", ""))
-                ws.cell(row=current_row, column=3, value=c.get("name", ""))
-                ws.cell(row=current_row, column=4, value=c.get("observation", ""))
+                ws.cell(
+                    row=current_row,
+                    column=2,
+                    value=format_suppleant_rank(c.get("rang_suppleant")),
+                )
+                ws.cell(row=current_row, column=3, value=c.get("filiere", ""))
+                ws.cell(row=current_row, column=4, value=c.get("name", ""))
+                ws.cell(row=current_row, column=5, value=c.get("observation", ""))
                 current_row += 1
 
     conn.close()
