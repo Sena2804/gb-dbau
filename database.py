@@ -10,6 +10,7 @@ import io
 import json
 import re
 import sqlite3
+import unicodedata
 from pathlib import Path
 
 import pandas as pd
@@ -23,8 +24,9 @@ NIVEAU_MAP = {
     "SPECIALITE": "Spécialisation",
     "SPÉCIALISATION": "Spécialisation",
     "SPECIALISATION": "Spécialisation",
-    "SPECIALITE MEDICALE": "Spécialisation",
-    "SPÉCIALITÉ MÉDICALE": "Spécialisation",
+    "SPECIALITE MEDICALE": "Spécialité médicale",
+    "SPÉCIALITÉ MEDICALE": "Spécialité médicale",
+    "SPECIALITE MÉDICALE": "Spécialité médicale",
 }
 
 DUPLICATE_POLICY = {
@@ -76,7 +78,48 @@ def _normalize_niveau(raw: str) -> str:
 
 
 def _normalize_filiere(name: str) -> str:
+    name = re.sub(r"^(?:fili[eè]re\s*:\s*)+", "", name, flags=re.IGNORECASE)
     return re.sub(r'\s+', ' ', name).strip()
+
+
+def _normalize_header(value: object) -> str:
+    text = unicodedata.normalize("NFKD", str(value or ""))
+    text = "".join(char for char in text if not unicodedata.combining(char))
+    return re.sub(r"\s+", " ", text).strip().upper()
+
+
+def _find_candidate_columns(ws) -> tuple[int, dict[str, int]]:
+    aliases = {
+        "numero": ("N°", "NO", "NUMERO"),
+        "sexe": ("SEXE",),
+        "id_russe": ("ID RUSSE",),
+        "name": ("NOM ET PRENOM", "NOM ET PRENOMS"),
+        "date_lieu_naissance": ("DATE & LIEU DE NAISSANCE", "DATE ET LIEU DE NAISSANCE"),
+        "diplome_filiere_annee": ("DIPLOME / FILIERE / ANNEE",),
+        "moyenne": ("MOYENNE / MENTION", "MOYENNE"),
+        "observation": ("OBSERVATION",),
+        "avis": ("AVIS CNABAU", "AVIS"),
+    }
+
+    for row_idx, row in enumerate(ws.iter_rows(min_row=1, max_row=min(ws.max_row, 120), values_only=True), 1):
+        normalized = [_normalize_header(value) for value in row]
+        if not any(value in aliases["numero"] for value in normalized):
+            continue
+        if not any(any(alias in value for alias in aliases["name"]) for value in normalized):
+            continue
+
+        columns = {}
+        for field, field_aliases in aliases.items():
+            for idx, value in enumerate(normalized):
+                if any(alias in value for alias in field_aliases):
+                    columns[field] = idx
+                    break
+
+        required = {"numero", "sexe", "name", "date_lieu_naissance", "diplome_filiere_annee"}
+        if required.issubset(columns):
+            return row_idx, columns
+
+    raise ValueError("En-têtes de candidatures introuvables dans le fichier Excel.")
 
 
 def _build_filiere_lookup() -> dict:
@@ -99,12 +142,13 @@ def _parse_real_excel(excel_path: str) -> list[dict]:
     wb = load_workbook(excel_path, data_only=True)
     ws = wb.active
 
+    header_row, columns = _find_candidate_columns(ws)
     filiere_lookup = _build_filiere_lookup()
     current_niveau = ""
     current_filiere = ""
     candidates = []
 
-    for row in ws.iter_rows(min_row=2, values_only=False):
+    for row in ws.iter_rows(min_row=header_row + 1, values_only=False):
         cell_a = row[0].value
         if cell_a is None:
             continue
@@ -122,7 +166,12 @@ def _parse_real_excel(excel_path: str) -> list[dict]:
                 raw_fil = val_a.split(":", 1)[-1].strip()
             else:
                 raw_fil = val_a
-            raw_fil = re.sub(r'\(\s*\d+\s*bourses?\)', '', raw_fil).strip()
+            raw_fil = re.sub(
+                r'\(\s*0*\d+\s*(?:bourses?|places?)\s*\)',
+                '',
+                raw_fil,
+                flags=re.IGNORECASE,
+            ).strip()
             raw_fil = re.sub(r'\s*-\s*[\d.]+\s*$', '', raw_fil).strip()
             raw_fil = _normalize_filiere(raw_fil)
             current_filiere = filiere_lookup.get(raw_fil.lower(), raw_fil)
@@ -136,28 +185,65 @@ def _parse_real_excel(excel_path: str) -> list[dict]:
                 current_filiere = val_a.strip()
             continue
 
-        def cell_str(idx):
+        def cell_str(field):
+            idx = columns.get(field)
+            if idx is None:
+                return ""
             v = row[idx].value if idx < len(row) else None
             return str(v).strip() if v is not None else ""
 
-        id_russe = cell_str(2)
+        id_russe = cell_str("id_russe")
         candidates.append({
-            "id_demande": f"{num:04d}",
+            "id_demande": f"MAR-{num:04d}/26",
             "id_russe": id_russe,
             "numero": num,
-            "sexe": cell_str(1),
-            "name": cell_str(3),
-            "date_lieu_naissance": cell_str(4),
-            "diplome_filiere_annee": cell_str(5),
-            "moyenne": cell_str(6),
-            "observation": cell_str(7),
+            "sexe": cell_str("sexe"),
+            "name": cell_str("name"),
+            "date_lieu_naissance": cell_str("date_lieu_naissance"),
+            "diplome_filiere_annee": cell_str("diplome_filiere_annee"),
+            "moyenne": cell_str("moyenne"),
+            "observation": cell_str("observation"),
             "filiere": current_filiere,
             "niveau_etudes": current_niveau,
-            "avis": cell_str(8) or "En attente",
+            "avis": cell_str("avis") or "En attente",
         })
 
     wb.close()
     return candidates
+
+
+def _parse_quotas_from_excel(excel_path: str) -> dict:
+    from openpyxl import load_workbook
+
+    wb = load_workbook(excel_path, read_only=True, data_only=True)
+    ws = wb.active
+    current_niveau = ""
+    quotas = {}
+
+    for row in ws.iter_rows(values_only=True):
+        value = str(row[0] or "").strip()
+        if not value:
+            continue
+
+        if "NIVEAU" in value.upper() and ":" in value:
+            current_niveau = _normalize_niveau(value.split(":", 1)[-1].strip())
+            continue
+
+        if re.match(r"^fili[eè]re\s*:", value, flags=re.IGNORECASE):
+            match = re.search(r"\(\s*0*(\d+)\s*places?\s*\)", value, flags=re.IGNORECASE)
+            if not match or not current_niveau:
+                continue
+            raw_filiere = re.sub(
+                r"\s*\(\s*0*\d+\s*places?\s*\)\s*$",
+                "",
+                value,
+                flags=re.IGNORECASE,
+            )
+            filiere = _normalize_filiere(raw_filiere)
+            quotas[(current_niveau, filiere)] = int(match.group(1))
+
+    wb.close()
+    return quotas
 
 
 def _apply_duplicate_policy(candidates: list[dict]) -> list[dict]:
@@ -220,7 +306,13 @@ def load_excel_to_db(excel_path: str) -> int:
 def _load_real_excel(excel_path: str) -> int:
     candidates = _parse_real_excel(excel_path)
     candidates = _apply_duplicate_policy(candidates)
+    quotas = _parse_quotas_from_excel(excel_path)
+    if not quotas:
+        raise ValueError("Aucun quota n'a été trouvé dans le fichier Excel.")
+
     conn = get_connection()
+    conn.execute("DELETE FROM candidatures")
+    conn.execute("DELETE FROM quotas")
     for c in candidates:
         conn.execute(
             """INSERT OR REPLACE INTO candidatures
@@ -230,6 +322,12 @@ def _load_real_excel(excel_path: str) -> int:
             (c["id_demande"], c["id_russe"], c["numero"], c["sexe"], c["name"],
              c["date_lieu_naissance"], c["diplome_filiere_annee"], c["moyenne"],
              c["observation"], c["filiere"], c["niveau_etudes"], c["avis"]),
+        )
+    for (niveau, filiere), nb_places in quotas.items():
+        conn.execute(
+            """INSERT INTO quotas (niveau_etudes, filiere, nb_places)
+               VALUES (?, ?, ?)""",
+            (niveau, filiere, nb_places),
         )
     conn.commit()
     conn.close()
@@ -382,7 +480,7 @@ def get_stats() -> dict:
     }
 
 
-NIVEAU_ORDER = ["Licence", "Master", "Doctorat", "Spécialisation"]
+NIVEAU_ORDER = ["Licence", "Master", "Doctorat", "Spécialité médicale"]
 
 
 def _create_base_docx():
@@ -544,7 +642,7 @@ def _create_base_docx():
     p.alignment = WD_ALIGN_PARAGRAPH.CENTER
     run = p.add_run(
         "LISTE DES ETUDIANTS PRESELECTIONNES POUR BENEFICIER DE LA BOURSE "
-        "DE COOPERATION RUSSE AU TITRE DE L\u2019ANNEE ACADEMIQUE 2025-2026"
+        "DE COOPERATION MAROCAINE AU TITRE DE L\u2019ANNEE ACADEMIQUE 2025-2026"
     )
     set_run_font(run, size=10, bold=True)
 

@@ -1,6 +1,6 @@
-# CNBAU — Application de Gestion des Bourses de Russie
+# CNBAU — Application de Gestion des Bourses du Maroc
 
-> Application web développée pour la **Commission Nationale des Bourses et Aides Universitaires (CNBAU)** du Bénin, dans le cadre de la session d'attribution des bourses d'études en Russie.
+> Application web développée pour la **Commission Nationale des Bourses et Aides Universitaires (CNBAU)** du Bénin, dans le cadre de la session d'attribution des bourses de coopération marocaine.
 
 ---
 
@@ -19,7 +19,7 @@
 
 ### Contexte
 
-Chaque année, la CNBAU organise une session de délibération pour attribuer les **150 bourses** allouées par la Russie aux étudiants béninois. Cette session réunit une commission de membres qui examinent plusieurs centaines de dossiers de candidature organisés par **niveau d'études** (Licence, Master, Doctorat, Spécialisation) et **filière**.
+Pour la session 2026, la CNBAU organise la délibération de **80 bourses** de coopération marocaine pour 417 dossiers, organisés par **niveau d'études** (Licence, Master, Doctorat, Spécialité médicale) et **filière**.
 
 Avant ce projet, la commission gérait les délibérations manuellement : annotation de tableaux Excel, calcul manuel des quotas, rédaction manuelle des documents officiels. Ce processus était lent, source d'erreurs et difficile à tracer.
 
@@ -30,7 +30,7 @@ Développer une application web **légère, déployable localement**, permettant
 - **Charger** les dossiers de candidature depuis un fichier Excel
 - **Parcourir et filtrer** les candidatures en temps réel
 - **Attribuer** les avis (Favorable, Défavorable, Suppléant, En attente) avec contrôle automatique des quotas
-- **Réallouer** les places non utilisées entre filières sans dépasser le total de 150 bourses
+- **Réallouer** les places non utilisées entre filières sans modifier le total de 80 bourses
 - **Exporter** les décisions sous forme de documents officiels (Word et Excel)
 
 ---
@@ -69,11 +69,10 @@ Deux tables SQLite gèrent la session en cours :
 | Colonne | Type | Description |
 |---------|------|-------------|
 | `id_demande` | TEXT (PK) | Identifiant unique du dossier |
-| `id_russe` | TEXT | Numéro d'identification russe (`BEN-XXXXX/26`) |
 | `numero` | INTEGER | Numéro d'ordre |
 | `name` | TEXT | Nom et prénom |
 | `filiere` | TEXT | Filière d'études |
-| `niveau_etudes` | TEXT | Niveau (Licence / Master / Doctorat / Spécialisation) |
+| `niveau_etudes` | TEXT | Niveau (Licence / Master / Doctorat / Spécialité médicale) |
 | `moyenne` | TEXT | Moyenne générale (virgule ou point décimal) |
 | `avis` | TEXT | Décision : `Favorable` / `Défavorable` / `Suppléant` / `En attente` |
 
@@ -121,7 +120,7 @@ Table SQLite candidatures
 - Indicateur visuel : bleu = places disponibles, vert = complet
 
 #### Onglet 3 — Examen individuel
-- Recherche par numéro d'ordre, ID russe ou nom (avec recherche approximative)
+- Recherche par numéro d'ordre ou nom (avec recherche approximative)
 - Fiche détaillée du candidat (état civil, diplôme, observation)
 - Mini-indicateur de quota contextualisé à la filière du candidat
 - Attribution d'avis avec protection contre le dépassement de quota
@@ -129,7 +128,7 @@ Table SQLite candidatures
 #### Onglet 4 — Réallocation des quotas
 - Formulaire de transfert de places d'une filière source vers une filière destination
 - Sélection réactive : les filières se filtrent dynamiquement selon le niveau choisi
-- Validations : places disponibles suffisantes, source ≠ destination, total = 150
+- Validations : places disponibles suffisantes, source ≠ destination, total = 80
 - Historique des transferts de la session (source, destination, nombre de places, heure)
 
 #### Onglet 5 — Export
@@ -143,7 +142,7 @@ Quatre formats d'export disponibles :
 | Excel — Grille des quotas | Tableau de synthèse : filière / places / favorables / restantes |
 
 #### Sidebar
-- Indicateur de progression global : `X / 150 bourses accordées`
+- Indicateur de progression global : `X / 80 bourses accordées`
 - Barre de progression colorée (jaune en cours, verte à 100%)
 - Bouton de réinitialisation de session
 
@@ -263,17 +262,18 @@ Cliquer sur **"Réinitialiser la session"** dans la sidebar pour effacer toutes 
   },
   "Master": { ... },
   "Doctorat": { ... },
-  "Spécialisation": { ... }
+  "Spécialité médicale": { ... }
 }
 ```
 
-Le total des places dans `quotas.json` doit toujours être égal à **150**.
+Le total des places dans `quotas.json` doit toujours être égal à **80**.
 
 ### Format du fichier Excel attendu
 
 Le parseur supporte le format Excel structuré de la CNBAU avec :
 - Des lignes d'en-tête `NIVEAU: ...` et `FILIERE: ...`
-- Des colonnes : ID russe, Sexe, Nom, Date/Lieu de naissance, Diplôme/Filière/Année, Moyenne, Observations
+- Des colonnes : N°, Sexe, Nom, Date/Lieu de naissance, Diplôme/Filière/Année, Moyenne/Mention, Observations, Avis CNaBAU
+- Des quotas indiqués dans chaque ligne de filière, par exemple `(11 places)`
 
 ### Dépendances
 
