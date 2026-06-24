@@ -15,7 +15,7 @@ def get_logo_b64() -> str:
     return ""
 
 
-NIVEAU_ORDER = ["Licence", "Master", "Doctorat", "Spécialité médicale"]
+NIVEAU_ORDER = ["Bac + 2 ans", "Licence", "Master", "Doctorat", "Spécialité médicale"]
 
 
 def get_colors(light: bool) -> dict:
