@@ -1,5 +1,6 @@
 """Génère un rapport de contrôle du fichier Maroc 2026."""
 
+import argparse
 from collections import Counter
 from pathlib import Path
 
@@ -12,12 +13,11 @@ import database as db
 
 
 SOURCE_FILE = Path("Tableau_FU_MAROC2026.xlsx")
-OUTPUT_FILE = Path("data/rapport_controle_maroc_2026.docx")
 
 
-def main():
-    candidates = db._parse_real_excel(str(SOURCE_FILE))
-    quotas = db._parse_quotas_from_excel(str(SOURCE_FILE))
+def main(source_file: Path = SOURCE_FILE):
+    candidates = db._apply_duplicate_policy(db._parse_real_excel(str(source_file)))
+    quotas = db._parse_quotas_from_excel(str(source_file))
     counts = Counter(candidate["niveau_etudes"] for candidate in candidates)
 
     doc = Document()
@@ -31,7 +31,7 @@ def main():
     run.font.size = Pt(16)
 
     doc.add_paragraph(
-        f"Le fichier {SOURCE_FILE.name} contient {len(candidates)} candidatures, "
+        f"Le fichier {source_file.name} contient {len(candidates)} candidatures, "
         f"{len(quotas)} filières et {sum(quotas.values())} places."
     )
 
@@ -48,14 +48,18 @@ def main():
         row[2].text = str(sum(value for (niv, _), value in quotas.items() if niv == niveau))
 
     doc.add_paragraph(
-        "Contrôles validés : numéros de dossiers uniques, total de 417 candidatures "
-        "et total de 80 bourses."
+        "Contrôles validés : numéros de dossiers uniques et correspondance entre "
+        "les candidatures, les filières et les quotas."
     )
 
-    OUTPUT_FILE.parent.mkdir(parents=True, exist_ok=True)
-    doc.save(OUTPUT_FILE)
-    print(f"Rapport généré : {OUTPUT_FILE}")
+    output_file = Path("data") / f"rapport_controle_{source_file.stem}.docx"
+    output_file.parent.mkdir(parents=True, exist_ok=True)
+    doc.save(output_file)
+    print(f"Rapport généré : {output_file}")
 
 
 if __name__ == "__main__":
-    main()
+    parser = argparse.ArgumentParser()
+    parser.add_argument("source", nargs="?", type=Path, default=SOURCE_FILE)
+    args = parser.parse_args()
+    main(args.source)

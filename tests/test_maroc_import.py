@@ -48,6 +48,55 @@ def create_maroc_workbook(path: Path):
     workbook.save(path)
 
 
+def create_professional_workbook(path: Path):
+    workbook = Workbook()
+    sheet = workbook.active
+    sheet.title = "Tableau COE"
+    sheet.append([
+        "N°",
+        "SEXE",
+        "NOM ET PRENOM (S)",
+        "DATE & LIEU DE NAISSANCE",
+        "DIPLOME / FILIERE / ANNEE",
+        "MOYENNE / MENTION",
+        "OBSERVATION",
+        "AVIS CNaBAU",
+    ])
+    sheet.append(["NIVEAU : BAC + 2 ans"])
+    sheet.append(["Filière : Génie Electrique (02 places)"])
+    sheet.append([
+        1,
+        "M",
+        "PREMIER DOSSIER",
+        "01/01/2006 à Cotonou",
+        "BAC D 2025",
+        "13,00 Assez bien",
+        "RAS",
+        None,
+    ])
+    sheet.append([
+        2,
+        "F",
+        "SECOND DOSSIER",
+        "02/02/2006 à Porto-Novo",
+        "BAC C 2025",
+        "14,00 Bien",
+        "RAS",
+        "BAC ETRANGER",
+    ])
+    sheet.append([
+        1,
+        "F",
+        "DOUBLON À IGNORER",
+        "03/03/2006 à Parakou",
+        "BAC D 2025",
+        "12,00 Assez bien",
+        "RAS",
+        None,
+    ])
+    workbook.save(path)
+
+
 class MarocImportTest(unittest.TestCase):
     def test_imports_candidates_and_quotas(self):
         original_db_path = db.DB_PATH
@@ -80,6 +129,29 @@ class MarocImportTest(unittest.TestCase):
                 first = candidates.sort_values("numero").iloc[0]
                 self.assertEqual(first["id_demande"], "MAR-0001/26")
                 self.assertEqual(first["name"], "CANDIDATE TEST")
+        finally:
+            db.DB_PATH = original_db_path
+
+    def test_imports_professional_file_and_keeps_first_duplicate_number(self):
+        original_db_path = db.DB_PATH
+        try:
+            with tempfile.TemporaryDirectory() as tmp:
+                db.DB_PATH = str(Path(tmp) / "session.db")
+                workbook_path = Path(tmp) / "maroc_fp.xlsx"
+                create_professional_workbook(workbook_path)
+                db.init_db()
+
+                count = db.load_excel_to_db(str(workbook_path))
+                candidates = db.get_all_candidatures().sort_values("numero")
+                quotas = db.get_quotas()
+
+                self.assertEqual(count, 2)
+                self.assertEqual(len(candidates), 2)
+                self.assertEqual(set(candidates["niveau_etudes"]), {"Bac + 2 ans"})
+                self.assertEqual(candidates.iloc[0]["name"], "PREMIER DOSSIER")
+                self.assertEqual(candidates.iloc[1]["avis"], "En attente")
+                self.assertIn("BAC ETRANGER", candidates.iloc[1]["observation"])
+                self.assertEqual(quotas, {("Bac + 2 ans", "Génie Electrique"): 2})
         finally:
             db.DB_PATH = original_db_path
 

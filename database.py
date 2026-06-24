@@ -18,6 +18,8 @@ import pandas as pd
 DB_PATH = "cnbau_session.db"
 
 NIVEAU_MAP = {
+    "BAC + 2 ANS": "Bac + 2 ans",
+    "BAC+2 ANS": "Bac + 2 ans",
     "LICENCE": "Licence",
     "MASTER": "Master",
     "DOCTORAT": "Doctorat",
@@ -33,6 +35,15 @@ DUPLICATE_POLICY = {
     "identical": "keep",
     "same_person_diff_filiere": "keep",
     "different_people": "keep",
+}
+
+AVIS_MAP = {
+    "FAVORABLE": "Favorable",
+    "DEFAVORABLE": "Défavorable",
+    "DÉFAVORABLE": "Défavorable",
+    "SUPPLEANT": "Suppléant",
+    "SUPPLÉANT": "Suppléant",
+    "EN ATTENTE": "En attente",
 }
 
 
@@ -193,6 +204,12 @@ def _parse_real_excel(excel_path: str) -> list[dict]:
             return str(v).strip() if v is not None else ""
 
         id_russe = cell_str("id_russe")
+        observation = cell_str("observation")
+        raw_avis = cell_str("avis")
+        avis = AVIS_MAP.get(raw_avis.upper(), "En attente")
+        if raw_avis and raw_avis.upper() not in AVIS_MAP:
+            observation = f"{observation}\nAvis initial : {raw_avis}".strip()
+
         candidates.append({
             "id_demande": f"MAR-{num:04d}/26",
             "id_russe": id_russe,
@@ -202,10 +219,10 @@ def _parse_real_excel(excel_path: str) -> list[dict]:
             "date_lieu_naissance": cell_str("date_lieu_naissance"),
             "diplome_filiere_annee": cell_str("diplome_filiere_annee"),
             "moyenne": cell_str("moyenne"),
-            "observation": cell_str("observation"),
+            "observation": observation,
             "filiere": current_filiere,
             "niveau_etudes": current_niveau,
-            "avis": cell_str("avis") or "En attente",
+            "avis": avis,
         })
 
     wb.close()
@@ -248,6 +265,11 @@ def _parse_quotas_from_excel(excel_path: str) -> dict:
 
 def _apply_duplicate_policy(candidates: list[dict]) -> list[dict]:
     from collections import defaultdict
+
+    unique_by_request = {}
+    for candidate in candidates:
+        unique_by_request.setdefault(candidate["id_demande"], candidate)
+    candidates = list(unique_by_request.values())
 
     by_id_russe = defaultdict(list)
     for c in candidates:
@@ -480,7 +502,7 @@ def get_stats() -> dict:
     }
 
 
-NIVEAU_ORDER = ["Licence", "Master", "Doctorat", "Spécialité médicale"]
+NIVEAU_ORDER = ["Bac + 2 ans", "Licence", "Master", "Doctorat", "Spécialité médicale"]
 
 
 def _create_base_docx():

@@ -19,7 +19,10 @@
 
 ### Contexte
 
-Pour la session 2026, la CNBAU organise la délibération de **80 bourses** de coopération marocaine pour 417 dossiers, organisés par **niveau d'études** (Licence, Master, Doctorat, Spécialité médicale) et **filière**.
+Pour la session 2026, la CNBAU organise les délibérations des bourses de coopération marocaine pour deux programmes :
+
+- **Formation universitaire (FU)** : 417 dossiers et 80 places, aux niveaux Licence, Master, Doctorat et Spécialité médicale.
+- **Formation professionnelle (FP)** : 70 dossiers au niveau Bac + 2 ans, avec 50 places contingentées par filière et 10 places sans quota de filière.
 
 Avant ce projet, la commission gérait les délibérations manuellement : annotation de tableaux Excel, calcul manuel des quotas, rédaction manuelle des documents officiels. Ce processus était lent, source d'erreurs et difficile à tracer.
 
@@ -72,7 +75,7 @@ Deux tables SQLite gèrent la session en cours :
 | `numero` | INTEGER | Numéro d'ordre |
 | `name` | TEXT | Nom et prénom |
 | `filiere` | TEXT | Filière d'études |
-| `niveau_etudes` | TEXT | Niveau (Licence / Master / Doctorat / Spécialité médicale) |
+| `niveau_etudes` | TEXT | Niveau (Bac + 2 ans / Licence / Master / Doctorat / Spécialité médicale) |
 | `moyenne` | TEXT | Moyenne générale (virgule ou point décimal) |
 | `avis` | TEXT | Décision : `Favorable` / `Défavorable` / `Suppléant` / `En attente` |
 
@@ -266,7 +269,7 @@ Cliquer sur **"Réinitialiser la session"** dans la sidebar pour effacer toutes 
 }
 ```
 
-Le total des places dans `quotas.json` doit toujours être égal à **80**.
+Le fichier `quotas.json` sert de configuration de référence pour la formation universitaire. Lors d'un import FU ou FP, les quotas inscrits dans le classeur sont chargés automatiquement et remplacent cette configuration pour la session courante.
 
 ### Format du fichier Excel attendu
 
@@ -274,6 +277,8 @@ Le parseur supporte le format Excel structuré de la CNBAU avec :
 - Des lignes d'en-tête `NIVEAU: ...` et `FILIERE: ...`
 - Des colonnes : N°, Sexe, Nom, Date/Lieu de naissance, Diplôme/Filière/Année, Moyenne/Mention, Observations, Avis CNaBAU
 - Des quotas indiqués dans chaque ligne de filière, par exemple `(11 places)`
+- Les fichiers `Tableau_FU_MAROC2026.xlsx` et `Tableau_FP MAROC2026.xlsx`
+- La suppression sécurisée des lignes portant un numéro de dossier dupliqué, en conservant la première occurrence
 
 ### Dépendances
 
