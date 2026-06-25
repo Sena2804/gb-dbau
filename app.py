@@ -63,7 +63,7 @@ if not db.is_db_loaded():
         with temp_path.open("wb") as f:
             f.write(uploaded.getvalue())
         try:
-            n = db.load_excel_to_db(str(temp_path))
+            n = db.load_excel_to_db(str(temp_path), uploaded.name.rsplit(".", 1)[0])
         except (ValueError, KeyError) as exc:
             st.error(f"Le fichier Excel n'est pas compatible avec la session Maroc 2026 : {exc}")
             st.stop()
@@ -133,6 +133,11 @@ def do_update_avis(id_demande: str, avis: str):
 all_df = cached_get_all_candidatures()
 quotas = cached_get_quotas()
 stats  = cached_get_stats()
+travaux = db.list_travaux()
+active_travail = next((t for t in travaux if t["actif"]), None)
+
+if active_travail:
+    st.caption(f"Travail actif : **{active_travail['nom']}**")
 
 # ---------------------------------------------------------------------------
 # KPIs
@@ -745,6 +750,79 @@ components.html(build_sticky_js(COLORS), height=0)
 # ---------------------------------------------------------------------------
 
 with st.sidebar:
+    travaux = db.list_travaux()
+    travaux_charges = [t for t in travaux if t.get("total", 0) > 0]
+
+    if travaux_charges:
+        st.markdown("### Travaux sauvegardés")
+        labels = {
+            f"{t['nom']} ({t['total']} dossiers)": t["id"]
+            for t in travaux_charges
+        }
+        active_id = active_travail["id"] if active_travail else travaux_charges[0]["id"]
+        active_label = next(
+            (label for label, travail_id in labels.items() if travail_id == active_id),
+            next(iter(labels)),
+        )
+        selected_label = st.selectbox(
+            "Travail actif",
+            list(labels.keys()),
+            index=list(labels.keys()).index(active_label),
+        )
+        selected_id = labels[selected_label]
+        if selected_id != active_id:
+            db.set_active_travail(selected_id)
+            invalidate_cache()
+            for key in ["page_liste", "transfer_log"]:
+                st.session_state.pop(key, None)
+            st.rerun()
+
+        new_name = st.text_input(
+            "Nom du travail",
+            value=active_travail["nom"] if active_travail else "",
+            key=f"rename_travail_{active_id}",
+        )
+        if st.button("Renommer le travail", use_container_width=True, icon=":material/edit:"):
+            db.rename_active_travail(new_name)
+            invalidate_cache()
+            st.rerun()
+
+        if st.button("Sauvegarder le travail", use_container_width=True, icon=":material/save:"):
+            db.save_active_travail()
+            st.success("Travail sauvegardé.")
+
+        st.markdown('<div style="height:0.5rem"></div>', unsafe_allow_html=True)
+        st.divider()
+
+    st.markdown("### Ajouter un fichier")
+    new_uploaded = st.file_uploader(
+        "Nouveau fichier Excel",
+        type=["xlsx"],
+        key="sidebar_new_upload",
+        help="Le fichier sera ajouté comme nouveau travail sauvegardé, sans écraser le travail actif.",
+    )
+    new_travail_name = st.text_input(
+        "Nom du nouveau travail",
+        value=new_uploaded.name.rsplit(".", 1)[0] if new_uploaded else "",
+        key="sidebar_new_work_name",
+    )
+    if new_uploaded and st.button("Créer le travail", type="primary", use_container_width=True, icon=":material/add:"):
+        temp_path = Path("_temp_upload.xlsx")
+        with temp_path.open("wb") as f:
+            f.write(new_uploaded.getvalue())
+        try:
+            n = db.load_excel_to_db(str(temp_path), new_travail_name or new_uploaded.name.rsplit(".", 1)[0])
+        except (ValueError, KeyError) as exc:
+            st.error(f"Le fichier Excel n'est pas compatible avec la session Maroc 2026 : {exc}")
+        else:
+            invalidate_cache()
+            st.success(f"{n} candidatures ont été chargées dans un nouveau travail.")
+            st.rerun()
+        finally:
+            temp_path.unlink(missing_ok=True)
+
+    st.divider()
+
     total      = sum(quotas.values())
     progression = stats["favorables"] / total if total > 0 else 0
     pct         = int(progression * 100)

@@ -158,6 +158,35 @@ class MarocImportTest(unittest.TestCase):
         finally:
             db.DB_PATH = original_db_path
 
+    def test_keeps_multiple_saved_works_separate(self):
+        original_db_path = db.DB_PATH
+        try:
+            with tempfile.TemporaryDirectory() as tmp:
+                db.DB_PATH = str(Path(tmp) / "session.db")
+                first_path = Path(tmp) / "premier.xlsx"
+                second_path = Path(tmp) / "second.xlsx"
+                create_professional_workbook(first_path)
+                create_maroc_workbook(second_path)
+                db.init_db()
+
+                db.load_excel_to_db(str(first_path), "Premier travail")
+                first_work = next(t for t in db.list_travaux() if t["actif"])
+                db.update_avis("MAR-0001/26", "Favorable")
+                first_candidates = db.get_all_candidatures()
+                self.assertEqual(first_candidates.iloc[0]["avis"], "Favorable")
+
+                db.load_excel_to_db(str(second_path), "Second travail")
+                second_candidates = db.get_all_candidatures().sort_values("numero")
+                self.assertEqual(len(second_candidates), 2)
+                self.assertEqual(second_candidates.iloc[0]["avis"], "En attente")
+
+                db.set_active_travail(first_work["id"])
+                restored = db.get_all_candidatures().sort_values("numero")
+                self.assertEqual(restored.iloc[0]["name"], "PREMIER DOSSIER")
+                self.assertEqual(restored.iloc[0]["avis"], "Favorable")
+        finally:
+            db.DB_PATH = original_db_path
+
     def test_assigns_reorders_and_exports_suppleant_ranks(self):
         original_db_path = db.DB_PATH
         try:

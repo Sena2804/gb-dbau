@@ -11,6 +11,7 @@ import json
 import re
 import sqlite3
 import unicodedata
+from datetime import datetime
 from pathlib import Path
 
 import pandas as pd
@@ -56,8 +57,19 @@ def get_connection() -> sqlite3.Connection:
 def init_db():
     conn = get_connection()
     conn.execute("""
+        CREATE TABLE IF NOT EXISTS travaux (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            nom TEXT NOT NULL,
+            fichier_source TEXT,
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL,
+            actif INTEGER NOT NULL DEFAULT 0
+        )
+    """)
+    conn.execute("""
         CREATE TABLE IF NOT EXISTS candidatures (
-            id_demande TEXT PRIMARY KEY,
+            travail_id INTEGER NOT NULL,
+            id_demande TEXT NOT NULL,
             id_russe TEXT,
             numero INTEGER,
             sexe TEXT,
@@ -69,9 +81,11 @@ def init_db():
             filiere TEXT NOT NULL,
             niveau_etudes TEXT NOT NULL,
             avis TEXT DEFAULT 'En attente',
-            rang_suppleant INTEGER
+            rang_suppleant INTEGER,
+            PRIMARY KEY (travail_id, id_demande)
         )
     """)
+    _migrate_multi_travaux_schema(conn)
     columns = {
         row["name"]
         for row in conn.execute("PRAGMA table_info(candidatures)").fetchall()
@@ -80,15 +94,212 @@ def init_db():
         conn.execute("ALTER TABLE candidatures ADD COLUMN rang_suppleant INTEGER")
     conn.execute("""
         CREATE TABLE IF NOT EXISTS quotas (
+            travail_id INTEGER NOT NULL DEFAULT 1,
             niveau_etudes TEXT NOT NULL,
             filiere TEXT NOT NULL,
             nb_places INTEGER NOT NULL,
-            PRIMARY KEY (niveau_etudes, filiere)
+            PRIMARY KEY (travail_id, niveau_etudes, filiere)
         )
     """)
     _normalize_all_suppleant_ranks(conn)
     conn.commit()
     conn.close()
+
+
+def _table_exists(conn: sqlite3.Connection, table_name: str) -> bool:
+    return conn.execute(
+        "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = ?",
+        (table_name,),
+    ).fetchone() is not None
+
+
+def _columns(conn: sqlite3.Connection, table_name: str) -> set[str]:
+    if not _table_exists(conn, table_name):
+        return set()
+    return {row["name"] for row in conn.execute(f"PRAGMA table_info({table_name})")}
+
+
+def _ensure_default_travail(conn: sqlite3.Connection) -> int:
+    row = conn.execute("SELECT id FROM travaux WHERE actif = 1 ORDER BY id DESC LIMIT 1").fetchone()
+    if row:
+        return row["id"]
+    row = conn.execute("SELECT id FROM travaux ORDER BY id LIMIT 1").fetchone()
+    if row:
+        conn.execute("UPDATE travaux SET actif = CASE WHEN id = ? THEN 1 ELSE 0 END", (row["id"],))
+        return row["id"]
+    now = datetime.now().isoformat(timespec="seconds")
+    cursor = conn.execute(
+        "INSERT INTO travaux (nom, fichier_source, created_at, updated_at, actif) VALUES (?, ?, ?, ?, 1)",
+        ("Travail principal", "", now, now),
+    )
+    return cursor.lastrowid
+
+
+def _migrate_multi_travaux_schema(conn: sqlite3.Connection):
+    travail_id = _ensure_default_travail(conn)
+
+    if _table_exists(conn, "candidatures"):
+        candidate_columns = _columns(conn, "candidatures")
+        candidate_pk = [
+            row["name"]
+            for row in sorted(
+                conn.execute("PRAGMA table_info(candidatures)").fetchall(),
+                key=lambda row: row["pk"],
+            )
+            if row["pk"]
+        ]
+    else:
+        candidate_columns = set()
+        candidate_pk = []
+
+    if (
+        _table_exists(conn, "candidatures")
+        and (
+            "travail_id" not in candidate_columns
+            or candidate_pk != ["travail_id", "id_demande"]
+        )
+    ):
+        conn.execute("ALTER TABLE candidatures RENAME TO candidatures_legacy")
+        conn.execute("""
+            CREATE TABLE candidatures (
+                travail_id INTEGER NOT NULL,
+                id_demande TEXT NOT NULL,
+                id_russe TEXT,
+                numero INTEGER,
+                sexe TEXT,
+                name TEXT NOT NULL,
+                date_lieu_naissance TEXT,
+                diplome_filiere_annee TEXT,
+                moyenne TEXT,
+                observation TEXT,
+                filiere TEXT NOT NULL,
+                niveau_etudes TEXT NOT NULL,
+                avis TEXT DEFAULT 'En attente',
+                rang_suppleant INTEGER,
+                PRIMARY KEY (travail_id, id_demande)
+            )
+        """)
+        legacy_columns = _columns(conn, "candidatures_legacy")
+        select_travail = "travail_id" if "travail_id" in legacy_columns else "?"
+        migration_params = () if "travail_id" in legacy_columns else (travail_id,)
+        select_rank = "rang_suppleant" if "rang_suppleant" in legacy_columns else "NULL"
+        conn.execute(f"""
+            INSERT INTO candidatures (
+                travail_id, id_demande, id_russe, numero, sexe, name,
+                date_lieu_naissance, diplome_filiere_annee, moyenne, observation,
+                filiere, niveau_etudes, avis, rang_suppleant
+            )
+            SELECT
+                {select_travail}, id_demande, id_russe, numero, sexe, name,
+                date_lieu_naissance, diplome_filiere_annee, moyenne, observation,
+                filiere, niveau_etudes, avis, {select_rank}
+            FROM candidatures_legacy
+        """, migration_params)
+        conn.execute("DROP TABLE candidatures_legacy")
+
+    if _table_exists(conn, "quotas") and "travail_id" not in _columns(conn, "quotas"):
+        conn.execute("ALTER TABLE quotas RENAME TO quotas_legacy")
+        conn.execute("""
+            CREATE TABLE quotas (
+                travail_id INTEGER NOT NULL,
+                niveau_etudes TEXT NOT NULL,
+                filiere TEXT NOT NULL,
+                nb_places INTEGER NOT NULL,
+                PRIMARY KEY (travail_id, niveau_etudes, filiere)
+            )
+        """)
+        conn.execute("""
+            INSERT INTO quotas (travail_id, niveau_etudes, filiere, nb_places)
+            SELECT ?, niveau_etudes, filiere, nb_places FROM quotas_legacy
+        """, (travail_id,))
+        conn.execute("DROP TABLE quotas_legacy")
+
+
+def get_active_travail_id() -> int | None:
+    if not Path(DB_PATH).exists():
+        return None
+    conn = get_connection()
+    try:
+        travail_id = _ensure_default_travail(conn)
+        conn.commit()
+        return travail_id
+    finally:
+        conn.close()
+
+
+def list_travaux() -> list[dict]:
+    if not Path(DB_PATH).exists():
+        return []
+    conn = get_connection()
+    try:
+        rows = conn.execute("""
+            SELECT
+                t.id, t.nom, t.fichier_source, t.created_at, t.updated_at, t.actif,
+                COUNT(c.id_demande) AS total
+            FROM travaux t
+            LEFT JOIN candidatures c ON c.travail_id = t.id
+            GROUP BY t.id
+            ORDER BY t.updated_at DESC, t.id DESC
+        """).fetchall()
+        return [dict(row) for row in rows]
+    except sqlite3.OperationalError:
+        return []
+    finally:
+        conn.close()
+
+
+def set_active_travail(travail_id: int):
+    conn = get_connection()
+    try:
+        exists = conn.execute("SELECT 1 FROM travaux WHERE id = ?", (travail_id,)).fetchone()
+        if not exists:
+            return
+        now = datetime.now().isoformat(timespec="seconds")
+        conn.execute("UPDATE travaux SET actif = CASE WHEN id = ? THEN 1 ELSE 0 END", (travail_id,))
+        conn.execute("UPDATE travaux SET updated_at = ? WHERE id = ?", (now, travail_id))
+        conn.commit()
+    finally:
+        conn.close()
+
+
+def _touch_active_travail(conn: sqlite3.Connection, travail_id: int | None = None):
+    travail_id = travail_id or _ensure_default_travail(conn)
+    now = datetime.now().isoformat(timespec="seconds")
+    conn.execute("UPDATE travaux SET updated_at = ? WHERE id = ?", (now, travail_id))
+
+
+def _create_travail(conn: sqlite3.Connection, nom: str, fichier_source: str = "") -> int:
+    now = datetime.now().isoformat(timespec="seconds")
+    conn.execute("UPDATE travaux SET actif = 0")
+    cursor = conn.execute(
+        "INSERT INTO travaux (nom, fichier_source, created_at, updated_at, actif) VALUES (?, ?, ?, ?, 1)",
+        (nom.strip() or "Nouveau travail", fichier_source, now, now),
+    )
+    return cursor.lastrowid
+
+
+def rename_active_travail(nom: str):
+    conn = get_connection()
+    try:
+        travail_id = _ensure_default_travail(conn)
+        now = datetime.now().isoformat(timespec="seconds")
+        conn.execute(
+            "UPDATE travaux SET nom = ?, updated_at = ? WHERE id = ?",
+            (nom.strip() or "Travail sans nom", now, travail_id),
+        )
+        conn.commit()
+    finally:
+        conn.close()
+
+
+def save_active_travail():
+    conn = get_connection()
+    try:
+        travail_id = _ensure_default_travail(conn)
+        _touch_active_travail(conn, travail_id)
+        conn.commit()
+    finally:
+        conn.close()
 
 
 def _normalize_niveau(raw: str) -> str:
@@ -327,13 +538,18 @@ def _is_real_cnabau_file(excel_path: str) -> bool:
     return False
 
 
-def load_excel_to_db(excel_path: str) -> int:
+def load_excel_to_db(excel_path: str, travail_name: str | None = None) -> int:
     if _is_real_cnabau_file(excel_path):
-        return _load_real_excel(excel_path)
-    return _load_flat_excel(excel_path)
+        return _load_real_excel(excel_path, travail_name)
+    return _load_flat_excel(excel_path, travail_name)
 
 
-def _load_real_excel(excel_path: str) -> int:
+def _default_travail_name(excel_path: str) -> str:
+    stem = Path(excel_path).stem.replace("_", " ").replace("-", " ").strip()
+    return stem.title() if stem else "Nouveau travail"
+
+
+def _load_real_excel(excel_path: str, travail_name: str | None = None) -> int:
     candidates = _parse_real_excel(excel_path)
     candidates = _apply_duplicate_policy(candidates)
     quotas = _parse_quotas_from_excel(excel_path)
@@ -341,30 +557,29 @@ def _load_real_excel(excel_path: str) -> int:
         raise ValueError("Aucun quota n'a été trouvé dans le fichier Excel.")
 
     conn = get_connection()
-    conn.execute("DELETE FROM candidatures")
-    conn.execute("DELETE FROM quotas")
+    travail_id = _create_travail(conn, travail_name or _default_travail_name(excel_path), Path(excel_path).name)
     for c in candidates:
         conn.execute(
             """INSERT OR REPLACE INTO candidatures
-               (id_demande, id_russe, numero, sexe, name, date_lieu_naissance,
+               (travail_id, id_demande, id_russe, numero, sexe, name, date_lieu_naissance,
                 diplome_filiere_annee, moyenne, observation, filiere, niveau_etudes, avis)
-               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
-            (c["id_demande"], c["id_russe"], c["numero"], c["sexe"], c["name"],
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+            (travail_id, c["id_demande"], c["id_russe"], c["numero"], c["sexe"], c["name"],
              c["date_lieu_naissance"], c["diplome_filiere_annee"], c["moyenne"],
              c["observation"], c["filiere"], c["niveau_etudes"], c["avis"]),
         )
     for (niveau, filiere), nb_places in quotas.items():
         conn.execute(
-            """INSERT INTO quotas (niveau_etudes, filiere, nb_places)
-               VALUES (?, ?, ?)""",
-            (niveau, filiere, nb_places),
+            """INSERT INTO quotas (travail_id, niveau_etudes, filiere, nb_places)
+               VALUES (?, ?, ?, ?)""",
+            (travail_id, niveau, filiere, nb_places),
         )
     conn.commit()
     conn.close()
     return len(candidates)
 
 
-def _load_flat_excel(excel_path: str) -> int:
+def _load_flat_excel(excel_path: str, travail_name: str | None = None) -> int:
     df = pd.read_excel(excel_path, engine="openpyxl")
     df.columns = [c.strip() for c in df.columns]
     if "avis" in df.columns:
@@ -373,12 +588,13 @@ def _load_flat_excel(excel_path: str) -> int:
         df["avis"] = "En attente"
 
     conn = get_connection()
+    travail_id = _create_travail(conn, travail_name or _default_travail_name(excel_path), Path(excel_path).name)
     for _, row in df.iterrows():
         conn.execute(
             """INSERT OR REPLACE INTO candidatures
-               (id_demande, name, filiere, niveau_etudes, avis)
-               VALUES (?, ?, ?, ?, ?)""",
-            (row["id_demande"], row["name"], row["filiere"],
+               (travail_id, id_demande, name, filiere, niveau_etudes, avis)
+               VALUES (?, ?, ?, ?, ?, ?)""",
+            (travail_id, row["id_demande"], row["name"], row["filiere"],
              row["niveau_etudes"], row["avis"]),
         )
     conn.commit()
@@ -391,47 +607,63 @@ def load_quotas(quotas_path: str):
         data = json.load(f)
 
     conn = get_connection()
+    travail_id = _ensure_default_travail(conn)
     for niveau, filieres in data.items():
         for filiere, nb_places in filieres.items():
             conn.execute(
-                """INSERT OR REPLACE INTO quotas (niveau_etudes, filiere, nb_places)
-                   VALUES (?, ?, ?)""",
-                (niveau, filiere, nb_places),
+                """INSERT OR REPLACE INTO quotas (travail_id, niveau_etudes, filiere, nb_places)
+                   VALUES (?, ?, ?, ?)""",
+                (travail_id, niveau, filiere, nb_places),
             )
+    _touch_active_travail(conn, travail_id)
     conn.commit()
     conn.close()
 
 
 def get_all_candidatures() -> pd.DataFrame:
     conn = get_connection()
-    df = pd.read_sql_query("SELECT * FROM candidatures", conn)
+    travail_id = _ensure_default_travail(conn)
+    df = pd.read_sql_query(
+        "SELECT * FROM candidatures WHERE travail_id = ?",
+        conn,
+        params=(travail_id,),
+    )
     conn.close()
     return df
 
 
 def get_quotas() -> dict:
     conn = get_connection()
-    rows = conn.execute("SELECT niveau_etudes, filiere, nb_places FROM quotas").fetchall()
+    travail_id = _ensure_default_travail(conn)
+    rows = conn.execute(
+        "SELECT niveau_etudes, filiere, nb_places FROM quotas WHERE travail_id = ?",
+        (travail_id,),
+    ).fetchall()
     conn.close()
     return {(r["niveau_etudes"], r["filiere"]): r["nb_places"] for r in rows}
 
 
 def get_favorables_count() -> dict:
     conn = get_connection()
+    travail_id = _ensure_default_travail(conn)
     rows = conn.execute(
         """SELECT niveau_etudes, filiere, COUNT(*) as n
-           FROM candidatures WHERE avis = 'Favorable'
+           FROM candidatures WHERE avis = 'Favorable' AND travail_id = ?
            GROUP BY niveau_etudes, filiere"""
+        ,
+        (travail_id,),
     ).fetchall()
     conn.close()
     return {(r["niveau_etudes"], r["filiere"]): r["n"] for r in rows}
 
 
-def _normalize_suppleant_ranks(conn: sqlite3.Connection, niveau: str, filiere: str):
+def _normalize_suppleant_ranks(conn: sqlite3.Connection, niveau: str, filiere: str, travail_id: int | None = None):
+    travail_id = travail_id or _ensure_default_travail(conn)
     rows = conn.execute(
         """SELECT id_demande
            FROM candidatures
            WHERE avis = 'Suppléant'
+             AND travail_id = ?
              AND niveau_etudes = ?
              AND filiere = ?
            ORDER BY
@@ -439,25 +671,28 @@ def _normalize_suppleant_ranks(conn: sqlite3.Connection, niveau: str, filiere: s
              rang_suppleant,
              numero,
              id_demande""",
-        (niveau, filiere),
+        (travail_id, niveau, filiere),
     ).fetchall()
     for rank, row in enumerate(rows, 1):
         conn.execute(
-            "UPDATE candidatures SET rang_suppleant = ? WHERE id_demande = ?",
-            (rank, row["id_demande"]),
+            "UPDATE candidatures SET rang_suppleant = ? WHERE travail_id = ? AND id_demande = ?",
+            (rank, travail_id, row["id_demande"]),
         )
 
 
 def _normalize_all_suppleant_ranks(conn: sqlite3.Connection):
+    travail_id = _ensure_default_travail(conn)
     groups = conn.execute(
         """SELECT DISTINCT niveau_etudes, filiere
            FROM candidatures
-           WHERE avis = 'Suppléant'"""
+           WHERE avis = 'Suppléant' AND travail_id = ?""",
+        (travail_id,),
     ).fetchall()
     for group in groups:
-        _normalize_suppleant_ranks(conn, group["niveau_etudes"], group["filiere"])
+        _normalize_suppleant_ranks(conn, group["niveau_etudes"], group["filiere"], travail_id)
     conn.execute(
-        "UPDATE candidatures SET rang_suppleant = NULL WHERE avis != 'Suppléant'"
+        "UPDATE candidatures SET rang_suppleant = NULL WHERE avis != 'Suppléant' AND travail_id = ?",
+        (travail_id,),
     )
 
 
@@ -474,10 +709,11 @@ def format_suppleant_rank(rank: int | None) -> str:
 def update_avis(id_demande: str, avis: str):
     conn = get_connection()
     try:
+        travail_id = _ensure_default_travail(conn)
         candidate = conn.execute(
             """SELECT niveau_etudes, filiere, avis, rang_suppleant
-               FROM candidatures WHERE id_demande = ?""",
-            (id_demande,),
+               FROM candidatures WHERE travail_id = ? AND id_demande = ?""",
+            (travail_id, id_demande),
         ).fetchone()
         if not candidate:
             return
@@ -491,31 +727,33 @@ def update_avis(id_demande: str, avis: str):
                 """SELECT COALESCE(MAX(rang_suppleant), 0) + 1
                    FROM candidatures
                    WHERE avis = 'Suppléant'
+                     AND travail_id = ?
                      AND niveau_etudes = ?
                      AND filiere = ?""",
-                (niveau, filiere),
+                (travail_id, niveau, filiere),
             ).fetchone()[0]
             conn.execute(
                 """UPDATE candidatures
                    SET avis = 'Suppléant', rang_suppleant = ?
-                   WHERE id_demande = ?""",
-                (next_rank, id_demande),
+                   WHERE travail_id = ? AND id_demande = ?""",
+                (next_rank, travail_id, id_demande),
             )
         elif avis == "Suppléant":
             conn.execute(
-                "UPDATE candidatures SET avis = ? WHERE id_demande = ?",
-                (avis, id_demande),
+                "UPDATE candidatures SET avis = ? WHERE travail_id = ? AND id_demande = ?",
+                (avis, travail_id, id_demande),
             )
         else:
             conn.execute(
                 """UPDATE candidatures
                    SET avis = ?, rang_suppleant = NULL
-                   WHERE id_demande = ?""",
-                (avis, id_demande),
+                   WHERE travail_id = ? AND id_demande = ?""",
+                (avis, travail_id, id_demande),
             )
 
         if old_avis == "Suppléant" or avis == "Suppléant":
-            _normalize_suppleant_ranks(conn, niveau, filiere)
+            _normalize_suppleant_ranks(conn, niveau, filiere, travail_id)
+        _touch_active_travail(conn, travail_id)
         conn.commit()
     finally:
         conn.close()
@@ -523,22 +761,26 @@ def update_avis(id_demande: str, avis: str):
 
 def search_by_field(field: str, query: str) -> dict | None:
     conn = get_connection()
+    travail_id = _ensure_default_travail(conn)
     row = None
     if field == "numero":
         try:
             num = int(query)
             row = conn.execute(
-                "SELECT * FROM candidatures WHERE numero = ?", (num,)
+                "SELECT * FROM candidatures WHERE travail_id = ? AND numero = ?",
+                (travail_id, num),
             ).fetchone()
         except ValueError:
             pass
     elif field == "id_russe":
         row = conn.execute(
-            "SELECT * FROM candidatures WHERE id_russe = ?", (query,)
+            "SELECT * FROM candidatures WHERE travail_id = ? AND id_russe = ?",
+            (travail_id, query),
         ).fetchone()
     elif field == "name":
         row = conn.execute(
-            "SELECT * FROM candidatures WHERE name = ? COLLATE NOCASE", (query,)
+            "SELECT * FROM candidatures WHERE travail_id = ? AND name = ? COLLATE NOCASE",
+            (travail_id, query),
         ).fetchone()
     conn.close()
     return dict(row) if row else None
@@ -546,20 +788,21 @@ def search_by_field(field: str, query: str) -> dict | None:
 
 def search_by_field_fuzzy(field: str, query: str) -> list[dict]:
     conn = get_connection()
+    travail_id = _ensure_default_travail(conn)
     if field == "numero":
         rows = conn.execute(
-            "SELECT * FROM candidatures WHERE CAST(numero AS TEXT) LIKE ? ORDER BY numero LIMIT 20",
-            (f"%{query}%",),
+            "SELECT * FROM candidatures WHERE travail_id = ? AND CAST(numero AS TEXT) LIKE ? ORDER BY numero LIMIT 20",
+            (travail_id, f"%{query}%"),
         ).fetchall()
     elif field == "id_russe":
         rows = conn.execute(
-            "SELECT * FROM candidatures WHERE id_russe LIKE ? ORDER BY numero LIMIT 20",
-            (f"%{query}%",),
+            "SELECT * FROM candidatures WHERE travail_id = ? AND id_russe LIKE ? ORDER BY numero LIMIT 20",
+            (travail_id, f"%{query}%"),
         ).fetchall()
     elif field == "name":
         rows = conn.execute(
-            "SELECT * FROM candidatures WHERE name LIKE ? COLLATE NOCASE ORDER BY numero LIMIT 20",
-            (f"%{query}%",),
+            "SELECT * FROM candidatures WHERE travail_id = ? AND name LIKE ? COLLATE NOCASE ORDER BY numero LIMIT 20",
+            (travail_id, f"%{query}%"),
         ).fetchall()
     else:
         rows = []
@@ -570,6 +813,7 @@ def search_by_field_fuzzy(field: str, query: str) -> list[dict]:
 # ✅ OPTIMISATION : une seule requête SQL au lieu de 5 COUNT() séparés
 def get_stats() -> dict:
     conn = get_connection()
+    travail_id = _ensure_default_travail(conn)
     row = conn.execute("""
         SELECT
             COUNT(*) AS total,
@@ -577,7 +821,8 @@ def get_stats() -> dict:
             SUM(CASE WHEN avis = 'Défavorable' THEN 1 ELSE 0 END) AS defavorables,
             SUM(CASE WHEN avis = 'Suppléant'   THEN 1 ELSE 0 END) AS suppleants
         FROM candidatures
-    """).fetchone()
+        WHERE travail_id = ?
+    """, (travail_id,)).fetchone()
     conn.close()
     total     = row["total"]        or 0
     fav       = row["favorables"]   or 0
@@ -777,12 +1022,14 @@ def export_to_docx(output_path: str) -> str:
     from docx.enum.text import WD_ALIGN_PARAGRAPH
 
     conn = get_connection()
+    travail_id = _ensure_default_travail(conn)
     rows = conn.execute(
         """SELECT * FROM candidatures
-           WHERE avis IN ('Favorable', 'Suppléant')
+           WHERE travail_id = ? AND avis IN ('Favorable', 'Suppléant')
            ORDER BY niveau_etudes, filiere,
                     CASE WHEN avis = 'Suppléant' THEN rang_suppleant ELSE numero END,
-                    numero"""
+                    numero""",
+        (travail_id,),
     ).fetchall()
     conn.close()
     candidates = [dict(r) for r in rows]
@@ -815,12 +1062,14 @@ def export_all_avis_to_docx(output_path: str) -> str:
     from docx.enum.text import WD_ALIGN_PARAGRAPH
 
     conn = get_connection()
+    travail_id = _ensure_default_travail(conn)
     rows = conn.execute(
         """SELECT * FROM candidatures
-           WHERE avis IN ('Favorable', 'Suppléant', 'Défavorable')
+           WHERE travail_id = ? AND avis IN ('Favorable', 'Suppléant', 'Défavorable')
            ORDER BY niveau_etudes, filiere,
                     CASE WHEN avis = 'Suppléant' THEN rang_suppleant ELSE numero END,
-                    numero"""
+                    numero""",
+        (travail_id,),
     ).fetchall()
     conn.close()
     candidates = [dict(r) for r in rows]
@@ -863,6 +1112,7 @@ def export_avis_to_xlsx(output_path: str) -> str:
     from openpyxl.utils import get_column_letter
 
     conn = get_connection()
+    travail_id = _ensure_default_travail(conn)
 
     avis_config = [
         ("Favorable",  "Favorables (Titulaires)"),
@@ -883,11 +1133,11 @@ def export_avis_to_xlsx(output_path: str) -> str:
         rows = conn.execute(
             """SELECT numero, name, filiere, niveau_etudes, observation, rang_suppleant
                FROM candidatures
-               WHERE avis = ?
+               WHERE travail_id = ? AND avis = ?
                ORDER BY niveau_etudes, filiere,
                         CASE WHEN avis = 'Suppléant' THEN rang_suppleant ELSE numero END,
                         numero""",
-            (avis_value,),
+            (travail_id, avis_value),
         ).fetchall()
 
         ws = wb.create_sheet(title=sheet_name)
@@ -948,14 +1198,17 @@ def export_quotas_to_xlsx(output_path: str) -> str:
     from openpyxl.utils import get_column_letter
 
     conn = get_connection()
+    travail_id = _ensure_default_travail(conn)
     quotas_rows = conn.execute(
-        "SELECT niveau_etudes, filiere, nb_places FROM quotas ORDER BY niveau_etudes, filiere"
+        "SELECT niveau_etudes, filiere, nb_places FROM quotas WHERE travail_id = ? ORDER BY niveau_etudes, filiere",
+        (travail_id,),
     ).fetchall()
 
     fav_rows = conn.execute(
         """SELECT niveau_etudes, filiere, COUNT(*) as n
-           FROM candidatures WHERE avis = 'Favorable'
-           GROUP BY niveau_etudes, filiere"""
+           FROM candidatures WHERE travail_id = ? AND avis = 'Favorable'
+           GROUP BY niveau_etudes, filiere""",
+        (travail_id,),
     ).fetchall()
     conn.close()
 
@@ -1039,7 +1292,11 @@ def export_quotas_to_xlsx(output_path: str) -> str:
 
 def get_total_quota() -> int:
     conn = get_connection()
-    total = conn.execute("SELECT COALESCE(SUM(nb_places), 0) FROM quotas").fetchone()[0]
+    travail_id = _ensure_default_travail(conn)
+    total = conn.execute(
+        "SELECT COALESCE(SUM(nb_places), 0) FROM quotas WHERE travail_id = ?",
+        (travail_id,),
+    ).fetchone()[0]
     conn.close()
     return total
 
@@ -1055,9 +1312,10 @@ def transfer_quota(source_niveau: str, source_filiere: str,
 
     conn = get_connection()
     try:
+        travail_id = _ensure_default_travail(conn)
         row_src = conn.execute(
-            "SELECT nb_places FROM quotas WHERE niveau_etudes = ? AND filiere = ?",
-            (source_niveau, source_filiere),
+            "SELECT nb_places FROM quotas WHERE travail_id = ? AND niveau_etudes = ? AND filiere = ?",
+            (travail_id, source_niveau, source_filiere),
         ).fetchone()
         if not row_src:
             return {"success": False, "error": f"Quota source introuvable ({source_niveau}, {source_filiere})."}
@@ -1065,8 +1323,8 @@ def transfer_quota(source_niveau: str, source_filiere: str,
         quota_source = row_src["nb_places"]
 
         fav_row = conn.execute(
-            "SELECT COUNT(*) as n FROM candidatures WHERE avis = 'Favorable' AND niveau_etudes = ? AND filiere = ?",
-            (source_niveau, source_filiere),
+            "SELECT COUNT(*) as n FROM candidatures WHERE travail_id = ? AND avis = 'Favorable' AND niveau_etudes = ? AND filiere = ?",
+            (travail_id, source_niveau, source_filiere),
         ).fetchone()
         fav_source  = fav_row["n"]
         disponibles = quota_source - fav_source
@@ -1078,8 +1336,8 @@ def transfer_quota(source_niveau: str, source_filiere: str,
             }
 
         row_dest = conn.execute(
-            "SELECT nb_places FROM quotas WHERE niveau_etudes = ? AND filiere = ?",
-            (dest_niveau, dest_filiere),
+            "SELECT nb_places FROM quotas WHERE travail_id = ? AND niveau_etudes = ? AND filiere = ?",
+            (travail_id, dest_niveau, dest_filiere),
         ).fetchone()
         if not row_dest:
             return {"success": False, "error": f"Quota destination introuvable ({dest_niveau}, {dest_filiere})."}
@@ -1087,13 +1345,14 @@ def transfer_quota(source_niveau: str, source_filiere: str,
         quota_dest = row_dest["nb_places"]
 
         conn.execute(
-            "UPDATE quotas SET nb_places = nb_places - ? WHERE niveau_etudes = ? AND filiere = ?",
-            (nb_places, source_niveau, source_filiere),
+            "UPDATE quotas SET nb_places = nb_places - ? WHERE travail_id = ? AND niveau_etudes = ? AND filiere = ?",
+            (nb_places, travail_id, source_niveau, source_filiere),
         )
         conn.execute(
-            "UPDATE quotas SET nb_places = nb_places + ? WHERE niveau_etudes = ? AND filiere = ?",
-            (nb_places, dest_niveau, dest_filiere),
+            "UPDATE quotas SET nb_places = nb_places + ? WHERE travail_id = ? AND niveau_etudes = ? AND filiere = ?",
+            (nb_places, travail_id, dest_niveau, dest_filiere),
         )
+        _touch_active_travail(conn, travail_id)
         conn.commit()
 
         return {
@@ -1113,7 +1372,11 @@ def is_db_loaded() -> bool:
         return False
     conn = get_connection()
     try:
-        count = conn.execute("SELECT COUNT(*) FROM candidatures").fetchone()[0]
+        travail_id = _ensure_default_travail(conn)
+        count = conn.execute(
+            "SELECT COUNT(*) FROM candidatures WHERE travail_id = ?",
+            (travail_id,),
+        ).fetchone()[0]
     except sqlite3.OperationalError:
         conn.close()
         return False
