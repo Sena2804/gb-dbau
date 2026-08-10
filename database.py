@@ -618,13 +618,20 @@ def _is_real_cnabau_file(excel_path: str) -> bool:
     from openpyxl import load_workbook
 
     wb = load_workbook(excel_path, read_only=True, data_only=True)
-    ws = wb.active
-    for row in ws.iter_rows(min_row=1, max_row=10, max_col=1, values_only=True):
-        val = str(row[0] or "")
-        if "NIVEAU" in val.upper() or "CNaBAU" in val or "BOURSE" in val.upper():
-            wb.close()
-            return True
-    wb.close()
+    try:
+        for ws in wb.worksheets:
+            for row in ws.iter_rows(min_row=1, max_row=min(ws.max_row, 80), max_col=min(ws.max_column, 20), values_only=True):
+                text = " ".join(str(value).strip() for value in row if value not in (None, ""))
+                normalized = _normalize_header(text)
+                if (
+                    "NIVEAU" in normalized
+                    or "BOURSE" in normalized
+                    or "CNABAU" in normalized
+                    or re.search(r"FIL+IERE\s*:", normalized)
+                ):
+                    return True
+    finally:
+        wb.close()
     return False
 
 
