@@ -4,6 +4,7 @@ from pathlib import Path
 import streamlit as st
 import streamlit.components.v1 as components
 
+from auth import require_admin, require_auth
 import database as db
 from style import NIVEAU_ORDER, build_css, build_sticky_js, get_colors, get_sidebar_style
 from ui_helper import (
@@ -22,6 +23,8 @@ from ui_helper import (
 st.set_page_config(page_title="CNaBAU - Bourse du Maroc", layout="wide")
 
 PAGE_SIZE = 15
+AUTH_CONTEXT = require_auth()
+IS_ADMIN = AUTH_CONTEXT["is_admin"]
 
 # ---------------------------------------------------------------------------
 # Thème
@@ -57,6 +60,9 @@ db.init_db()
 
 if not db.is_db_loaded():
     st.info("Chargez le fichier Excel des candidatures pour commencer.")
+    if not IS_ADMIN:
+        st.warning("Aucun travail n'est charge. Demandez a un administrateur d'importer le fichier initial.")
+        st.stop()
     uploaded = st.file_uploader("Fichier Excel des candidatures", type=["xlsx"])
     if uploaded:
         temp_path = Path("_temp_upload.xlsx")
@@ -477,6 +483,7 @@ with tab_realloc:
 
     st.markdown("<div style='height:1rem'></div>", unsafe_allow_html=True)
     st.markdown(section_header("swap_horiz", "Réallocation des quotas"), unsafe_allow_html=True)
+    require_admin("La reallocation des quotas est reservee aux administrateurs.")
     st.caption(
         "Transférez des places inutilisées d'une filière vers une autre. "
         "Le total des bourses reste toujours inchangé."
@@ -560,11 +567,16 @@ with tab_realloc:
             value=1,
             key="nb_transfer",
         )
-        submitted = st.form_submit_button("Transférer", type="primary", icon=":material/swap_horiz:")
+        submitted = st.form_submit_button(
+            "Transférer",
+            type="primary",
+            icon=":material/swap_horiz:",
+            disabled=not IS_ADMIN,
+        )
 
     st.markdown('</div>', unsafe_allow_html=True)
 
-    if submitted:
+    if submitted and IS_ADMIN:
         if not src_filieres or src_filiere not in src_filieres:
             st.error("La filière source n'a pas de places disponibles.")
         elif not dest_filieres or dest_filiere not in dest_filieres:
@@ -606,6 +618,7 @@ with tab_realloc:
 with tab_export:
     st.markdown("<div style='height:1rem'></div>", unsafe_allow_html=True)
     st.markdown(section_header("download", "Génération des documents officiels"), unsafe_allow_html=True)
+    require_admin("Les exports sont reserves aux administrateurs.")
     st.caption("Générez et téléchargez les documents de décisions finales pour transmission officielle.")
     st.markdown("<div style='height:1rem'></div>", unsafe_allow_html=True)
 
@@ -623,7 +636,14 @@ with tab_export:
     """, unsafe_allow_html=True)
     col_g1, col_d1, _ = st.columns([1, 1, 2])
     with col_g1:
-        if st.button("Générer", key="gen_word", type="primary", use_container_width=True, icon=":material/description:"):
+        if st.button(
+            "Générer",
+            key="gen_word",
+            type="primary",
+            use_container_width=True,
+            icon=":material/description:",
+            disabled=not IS_ADMIN,
+        ):
             with st.spinner("Génération en cours…"):
                 output = "export_decisions_cnbau.docx"
                 db.export_to_docx(output)
@@ -637,7 +657,7 @@ with tab_export:
                 data=st.session_state["export_word_data"],
                 file_name="export_decisions_cnbau.docx",
                 mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-                use_container_width=True, icon=":material/download:",
+                use_container_width=True, icon=":material/download:", disabled=not IS_ADMIN,
             )
 
     st.divider()
@@ -656,7 +676,14 @@ with tab_export:
     """, unsafe_allow_html=True)
     col_g2, col_d2, _ = st.columns([1, 1, 2])
     with col_g2:
-        if st.button("Générer", key="gen_word_all", type="primary", use_container_width=True, icon=":material/fact_check:"):
+        if st.button(
+            "Générer",
+            key="gen_word_all",
+            type="primary",
+            use_container_width=True,
+            icon=":material/fact_check:",
+            disabled=not IS_ADMIN,
+        ):
             with st.spinner("Génération en cours…"):
                 output = "export_toutes_decisions_cnbau.docx"
                 db.export_all_avis_to_docx(output)
@@ -670,7 +697,7 @@ with tab_export:
                 data=st.session_state["export_word_all_data"],
                 file_name="export_toutes_decisions_cnbau.docx",
                 mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-                use_container_width=True, icon=":material/download:",
+                use_container_width=True, icon=":material/download:", disabled=not IS_ADMIN,
             )
 
     st.divider()
@@ -689,7 +716,14 @@ with tab_export:
     """, unsafe_allow_html=True)
     col_g3, col_d3, _ = st.columns([1, 1, 2])
     with col_g3:
-        if st.button("Générer", key="gen_excel_avis", type="primary", use_container_width=True, icon=":material/table_chart:"):
+        if st.button(
+            "Générer",
+            key="gen_excel_avis",
+            type="primary",
+            use_container_width=True,
+            icon=":material/table_chart:",
+            disabled=not IS_ADMIN,
+        ):
             with st.spinner("Génération en cours…"):
                 output = "export_decisions_cnbau.xlsx"
                 db.export_avis_to_xlsx(output)
@@ -703,7 +737,7 @@ with tab_export:
                 data=st.session_state["export_excel_avis_data"],
                 file_name="export_decisions_cnbau.xlsx",
                 mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-                use_container_width=True, icon=":material/download:",
+                use_container_width=True, icon=":material/download:", disabled=not IS_ADMIN,
             )
 
     st.divider()
@@ -722,7 +756,14 @@ with tab_export:
     """, unsafe_allow_html=True)
     col_g4, col_d4, _ = st.columns([1, 1, 2])
     with col_g4:
-        if st.button("Générer", key="gen_excel_quotas", type="primary", use_container_width=True, icon=":material/grid_view:"):
+        if st.button(
+            "Générer",
+            key="gen_excel_quotas",
+            type="primary",
+            use_container_width=True,
+            icon=":material/grid_view:",
+            disabled=not IS_ADMIN,
+        ):
             with st.spinner("Génération en cours…"):
                 output = "export_quotas_cnbau.xlsx"
                 db.export_quotas_to_xlsx(output)
@@ -736,7 +777,7 @@ with tab_export:
                 data=st.session_state["export_excel_quotas_data"],
                 file_name="export_quotas_cnbau.xlsx",
                 mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-                use_container_width=True, icon=":material/download:",
+                use_container_width=True, icon=":material/download:", disabled=not IS_ADMIN,
             )
 
 # ---------------------------------------------------------------------------
@@ -777,51 +818,53 @@ with st.sidebar:
                 st.session_state.pop(key, None)
             st.rerun()
 
-        new_name = st.text_input(
-            "Nom du travail",
-            value=active_travail["nom"] if active_travail else "",
-            key=f"rename_travail_{active_id}",
-        )
-        if st.button("Renommer le travail", use_container_width=True, icon=":material/edit:"):
-            db.rename_active_travail(new_name)
-            invalidate_cache()
-            st.rerun()
+        if IS_ADMIN:
+            new_name = st.text_input(
+                "Nom du travail",
+                value=active_travail["nom"] if active_travail else "",
+                key=f"rename_travail_{active_id}",
+            )
+            if st.button("Renommer le travail", use_container_width=True, icon=":material/edit:"):
+                db.rename_active_travail(new_name)
+                invalidate_cache()
+                st.rerun()
 
-        if st.button("Sauvegarder le travail", use_container_width=True, icon=":material/save:"):
-            db.save_active_travail()
-            st.success("Travail sauvegardé.")
+            if st.button("Sauvegarder le travail", use_container_width=True, icon=":material/save:"):
+                db.save_active_travail()
+                st.success("Travail sauvegardé.")
 
         st.markdown('<div style="height:0.5rem"></div>', unsafe_allow_html=True)
         st.divider()
 
-    st.markdown("### Ajouter un fichier")
-    new_uploaded = st.file_uploader(
-        "Nouveau fichier Excel",
-        type=["xlsx"],
-        key="sidebar_new_upload",
-        help="Le fichier sera ajouté comme nouveau travail sauvegardé, sans écraser le travail actif.",
-    )
-    new_travail_name = st.text_input(
-        "Nom du nouveau travail",
-        value=new_uploaded.name.rsplit(".", 1)[0] if new_uploaded else "",
-        key="sidebar_new_work_name",
-    )
-    if new_uploaded and st.button("Créer le travail", type="primary", use_container_width=True, icon=":material/add:"):
-        temp_path = Path("_temp_upload.xlsx")
-        with temp_path.open("wb") as f:
-            f.write(new_uploaded.getvalue())
-        try:
-            n = db.load_excel_to_db(str(temp_path), new_travail_name or new_uploaded.name.rsplit(".", 1)[0])
-        except (ValueError, KeyError) as exc:
-            st.error(f"Le fichier Excel n'est pas compatible avec la session Maroc 2026 : {exc}")
-        else:
-            invalidate_cache()
-            st.success(f"{n} candidatures ont été chargées dans un nouveau travail.")
-            st.rerun()
-        finally:
-            temp_path.unlink(missing_ok=True)
+    if IS_ADMIN:
+        st.markdown("### Ajouter un fichier")
+        new_uploaded = st.file_uploader(
+            "Nouveau fichier Excel",
+            type=["xlsx"],
+            key="sidebar_new_upload",
+            help="Le fichier sera ajouté comme nouveau travail sauvegardé, sans écraser le travail actif.",
+        )
+        new_travail_name = st.text_input(
+            "Nom du nouveau travail",
+            value=new_uploaded.name.rsplit(".", 1)[0] if new_uploaded else "",
+            key="sidebar_new_work_name",
+        )
+        if new_uploaded and st.button("Créer le travail", type="primary", use_container_width=True, icon=":material/add:"):
+            temp_path = Path("_temp_upload.xlsx")
+            with temp_path.open("wb") as f:
+                f.write(new_uploaded.getvalue())
+            try:
+                n = db.load_excel_to_db(str(temp_path), new_travail_name or new_uploaded.name.rsplit(".", 1)[0])
+            except (ValueError, KeyError) as exc:
+                st.error(f"Le fichier Excel n'est pas compatible avec la session Maroc 2026 : {exc}")
+            else:
+                invalidate_cache()
+                st.success(f"{n} candidatures ont été chargées dans un nouveau travail.")
+                st.rerun()
+            finally:
+                temp_path.unlink(missing_ok=True)
 
-    st.divider()
+        st.divider()
 
     total      = sum(quotas.values())
     progression = stats["favorables"] / total if total > 0 else 0
@@ -847,7 +890,7 @@ with st.sidebar:
     st.markdown('<div style="height:1rem"></div>', unsafe_allow_html=True)
     st.divider()
 
-    if st.button("Réinitialiser la session", type="secondary", use_container_width=True):
+    if IS_ADMIN and st.button("Réinitialiser la session", type="secondary", use_container_width=True):
         db.reset_db()
         invalidate_cache()
         for key in list(st.session_state.keys()):
