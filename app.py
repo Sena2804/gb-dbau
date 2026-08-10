@@ -21,7 +21,7 @@ from ui_helper import (
 # ---------------------------------------------------------------------------
 
 st.set_page_config(
-    page_title="CNaBAU - Bourse du Maroc",
+    page_title="CNaBAU - Bourse de Tunisie",
     layout="wide",
     menu_items={
         "Get help": None,
@@ -54,7 +54,7 @@ st.markdown("""
 <div class="app-title">
     <span class="ms" style="font-size:48px">school</span>
     <div>
-        <h1>CNaBAU — Bourse du Maroc</h1>
+        <h1>CNaBAU — Bourse de Tunisie</h1>
         <span class="sub">Session de la Commission Nationale des Bourses et Aides Universitaires</span>
     </div>
 </div>
@@ -79,7 +79,7 @@ if not db.is_db_loaded():
         try:
             n = db.load_excel_to_db(str(temp_path), uploaded.name.rsplit(".", 1)[0])
         except (ValueError, KeyError) as exc:
-            st.error(f"Le fichier Excel n'est pas compatible avec la session Maroc 2026 : {exc}")
+            st.error(f"Le fichier Excel n'est pas compatible avec la session Tunisie 2026-2027 : {exc}")
             st.stop()
         finally:
             temp_path.unlink(missing_ok=True)
@@ -866,7 +866,7 @@ with st.sidebar:
                     db.backup_db("before_import")
                 n = db.load_excel_to_db(str(temp_path), new_travail_name or new_uploaded.name.rsplit(".", 1)[0])
             except (ValueError, KeyError) as exc:
-                st.error(f"Le fichier Excel n'est pas compatible avec la session Maroc 2026 : {exc}")
+                st.error(f"Le fichier Excel n'est pas compatible avec la session Tunisie 2026-2027 : {exc}")
             else:
                 invalidate_cache()
                 st.success(f"{n} candidatures ont été chargées dans un nouveau travail.")

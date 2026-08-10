@@ -368,119 +368,207 @@ def _build_filiere_lookup() -> dict:
     return lookup
 
 
-def _parse_real_excel(excel_path: str) -> list[dict]:
-    from openpyxl import load_workbook
+def _moyenne_to_float(value: object) -> float | None:
+    match = re.search(r"(\d+(?:[.,]\d+)?)", str(value or ""))
+    if not match:
+        return None
+    try:
+        return float(match.group(1).replace(",", "."))
+    except ValueError:
+        return None
 
-    wb = load_workbook(excel_path, data_only=True)
-    ws = wb.active
 
-    header_row, columns = _find_candidate_columns(ws)
-    filiere_lookup = _build_filiere_lookup()
-    current_niveau = ""
-    current_filiere = ""
-    candidates = []
+def _session_prefix(excel_path: str) -> str:
+    stem = Path(excel_path).stem.upper()
+    if "TUNIS" in stem:
+        return "TUN"
+    if "MAROC" in stem:
+        return "MAR"
+    return "CNA"
 
-    for row in ws.iter_rows(min_row=header_row + 1, values_only=False):
-        cell_a = row[0].value
-        if cell_a is None:
+
+def _infer_niveau_from_diplome(diplome: str) -> str:
+    text = _normalize_header(diplome)
+    if "BACCALAUREAT" in text:
+        return "Licence"
+    if "LICENCE" in text:
+        return "Master"
+    if "MASTER" in text or "DEA" in text or "DIPLOME D ETUDES APPROFONDIES" in text:
+        return "Doctorat"
+    return "Licence"
+
+
+def _looks_like_diplome(value: object) -> bool:
+    text = _normalize_header(value)
+    return any(
+        marker in text
+        for marker in (
+            "BACCALAUREAT",
+            "LICENCE",
+            "MASTER",
+            "DIPLOME",
+            "DEA",
+        )
+    )
+
+
+def _extract_niveau_from_text(text: str) -> str:
+    if "NIVEAU" not in _normalize_header(text):
+        return ""
+    raw = text.split(":", 1)[-1].strip() if ":" in text else text
+    return _normalize_niveau(raw)
+
+
+def _extract_filiere_and_quota(text: str, filiere_lookup: dict) -> tuple[str, int | None] | None:
+    normalized = _normalize_header(text)
+    if not re.search(r"FIL+IERE\s*:", normalized):
+        return None
+
+    raw = re.sub(r"^.*?fil+i[eè]re\s*:\s*", "", text, flags=re.IGNORECASE).strip()
+    quota_match = re.search(r"\(?\s*0*(\d+)\s*(?:bourses?|places?)\s*\)?", raw, flags=re.IGNORECASE)
+    quota = int(quota_match.group(1)) if quota_match else None
+    raw = re.sub(r"\(?\s*0*\d+\s*(?:bourses?|places?)\s*\)?", "", raw, flags=re.IGNORECASE)
+    filiere = _normalize_filiere(raw)
+    return filiere_lookup.get(filiere.lower(), filiere), quota
+
+
+def _candidate_from_row(row) -> dict | None:
+    values = [cell.value for cell in row]
+    for idx, value in enumerate(values):
+        if not str(value or "").strip().isdigit():
+            continue
+        if idx + 5 >= len(values):
             continue
 
-        val_a = str(cell_a).strip()
-
-        if "NIVEAU" in val_a.upper() and ":" in val_a:
-            raw_niveau = val_a.split(":", 1)[-1].strip()
-            current_niveau = _normalize_niveau(raw_niveau)
+        sexe = str(values[idx + 1] or "").strip().upper()
+        if sexe not in {"M", "F"}:
             continue
 
-        val_lower = val_a.lower()
-        if val_lower.startswith("filiere") or val_lower.startswith("filière"):
-            if ":" in val_a:
-                raw_fil = val_a.split(":", 1)[-1].strip()
-            else:
-                raw_fil = val_a
-            raw_fil = re.sub(
-                r'\(\s*0*\d+\s*(?:bourses?|places?)\s*\)',
-                '',
-                raw_fil,
-                flags=re.IGNORECASE,
-            ).strip()
-            raw_fil = re.sub(r'\s*-\s*[\d.]+\s*$', '', raw_fil).strip()
-            raw_fil = _normalize_filiere(raw_fil)
-            current_filiere = filiere_lookup.get(raw_fil.lower(), raw_fil)
+        variants = [
+            {"id_russe": "", "name": idx + 2, "date": idx + 3, "diplome": idx + 4, "moyenne": idx + 5, "observation": idx + 6, "avis": idx + 7},
+            {"id_russe": str(values[idx + 2] or "").strip(), "name": idx + 3, "date": idx + 4, "diplome": idx + 5, "moyenne": idx + 6, "observation": idx + 7, "avis": idx + 8},
+        ]
+
+        selected = None
+        for variant in variants:
+            name = str(values[variant["name"]] or "").strip() if variant["name"] < len(values) else ""
+            diplome = str(values[variant["diplome"]] or "").strip() if variant["diplome"] < len(values) else ""
+            if name and _looks_like_diplome(diplome):
+                selected = variant
+                break
+
+        if selected is None:
             continue
 
-        try:
-            num = int(cell_a)
-        except (ValueError, TypeError):
-            rest_empty = all(c.value is None for c in row[1:9])
-            if rest_empty and len(val_a) > 3:
-                current_filiere = val_a.strip()
-            continue
+        def get_value(field: str) -> str:
+            col_idx = selected[field]
+            return str(values[col_idx] or "").strip() if col_idx < len(values) and values[col_idx] is not None else ""
 
-        def cell_str(field):
-            idx = columns.get(field)
-            if idx is None:
-                return ""
-            v = row[idx].value if idx < len(row) else None
-            return str(v).strip() if v is not None else ""
-
-        id_russe = cell_str("id_russe")
-        observation = cell_str("observation")
-        raw_avis = cell_str("avis")
+        raw_avis = get_value("avis")
         avis = AVIS_MAP.get(raw_avis.upper(), "En attente")
+        observation = get_value("observation")
         if raw_avis and raw_avis.upper() not in AVIS_MAP:
             observation = f"{observation}\nAvis initial : {raw_avis}".strip()
 
-        candidates.append({
-            "id_demande": f"MAR-{num:04d}/26",
-            "id_russe": id_russe,
-            "numero": num,
-            "sexe": cell_str("sexe"),
-            "name": cell_str("name"),
-            "date_lieu_naissance": cell_str("date_lieu_naissance"),
-            "diplome_filiere_annee": cell_str("diplome_filiere_annee"),
-            "moyenne": cell_str("moyenne"),
+        return {
+            "source_numero": int(str(value).strip()),
+            "id_russe": selected["id_russe"],
+            "sexe": sexe,
+            "name": get_value("name"),
+            "date_lieu_naissance": get_value("date"),
+            "diplome_filiere_annee": get_value("diplome"),
+            "moyenne": get_value("moyenne"),
             "observation": observation,
-            "filiere": current_filiere,
-            "niveau_etudes": current_niveau,
             "avis": avis,
+        }
+    return None
+
+
+def _parse_real_excel_groups(excel_path: str) -> list[dict]:
+    from openpyxl import load_workbook
+
+    wb = load_workbook(excel_path, data_only=True)
+    filiere_lookup = _build_filiere_lookup()
+    groups = []
+
+    def flush_group(niveau: str, filiere: str, quota: int | None, candidates: list[dict]):
+        if not candidates or not filiere:
+            return
+        resolved_niveau = niveau or _infer_niveau_from_diplome(candidates[0].get("diplome_filiere_annee", ""))
+        for candidate in candidates:
+            candidate["niveau_etudes"] = resolved_niveau
+            candidate["filiere"] = filiere
+        candidates.sort(
+            key=lambda c: _moyenne_to_float(c.get("moyenne")) if _moyenne_to_float(c.get("moyenne")) is not None else -1,
+            reverse=True,
+        )
+        groups.append({
+            "niveau_etudes": resolved_niveau,
+            "filiere": filiere,
+            "quota": quota if quota is not None else len(candidates),
+            "candidates": candidates,
         })
 
+    for ws in wb.worksheets:
+        current_niveau = ""
+        current_filiere = ""
+        current_quota = None
+        current_candidates: list[dict] = []
+
+        for row in ws.iter_rows(values_only=False):
+            row_values = [cell.value for cell in row]
+            row_text = " ".join(str(value).strip() for value in row_values if value not in (None, ""))
+            if not row_text:
+                continue
+
+            niveau = _extract_niveau_from_text(row_text)
+            if niveau:
+                current_niveau = niveau
+                continue
+
+            filiere_info = _extract_filiere_and_quota(row_text, filiere_lookup)
+            if filiere_info:
+                flush_group(current_niveau, current_filiere, current_quota, current_candidates)
+                current_filiere, current_quota = filiere_info
+                current_candidates = []
+                continue
+
+            candidate = _candidate_from_row(row)
+            if candidate and current_filiere:
+                current_candidates.append(candidate)
+
+        flush_group(current_niveau, current_filiere, current_quota, current_candidates)
+
     wb.close()
+    return groups
+
+
+def _parse_real_excel(excel_path: str) -> list[dict]:
+    groups = _parse_real_excel_groups(excel_path)
+    prefix = _session_prefix(excel_path)
+    candidates = []
+    numero = 1
+
+    for group in groups:
+        for candidate in group["candidates"]:
+            source_numero = candidate.pop("source_numero")
+            observation = candidate.get("observation", "")
+            if source_numero != numero:
+                observation = f"{observation}\nN° source : {source_numero}".strip()
+            candidate.update({
+                "id_demande": f"{prefix}-{numero:04d}/26",
+                "numero": numero,
+                "observation": observation,
+            })
+            candidates.append(candidate)
+            numero += 1
     return candidates
 
 
 def _parse_quotas_from_excel(excel_path: str) -> dict:
-    from openpyxl import load_workbook
-
-    wb = load_workbook(excel_path, read_only=True, data_only=True)
-    ws = wb.active
-    current_niveau = ""
     quotas = {}
-
-    for row in ws.iter_rows(values_only=True):
-        value = str(row[0] or "").strip()
-        if not value:
-            continue
-
-        if "NIVEAU" in value.upper() and ":" in value:
-            current_niveau = _normalize_niveau(value.split(":", 1)[-1].strip())
-            continue
-
-        if re.match(r"^fili[eè]re\s*:", value, flags=re.IGNORECASE):
-            match = re.search(r"\(\s*0*(\d+)\s*places?\s*\)", value, flags=re.IGNORECASE)
-            if not match or not current_niveau:
-                continue
-            raw_filiere = re.sub(
-                r"\s*\(\s*0*\d+\s*places?\s*\)\s*$",
-                "",
-                value,
-                flags=re.IGNORECASE,
-            )
-            filiere = _normalize_filiere(raw_filiere)
-            quotas[(current_niveau, filiere)] = int(match.group(1))
-
-    wb.close()
+    for group in _parse_real_excel_groups(excel_path):
+        quotas[(group["niveau_etudes"], group["filiere"])] = group["quota"]
     return quotas
 
 
@@ -1011,7 +1099,7 @@ def _create_base_docx():
     p.alignment = WD_ALIGN_PARAGRAPH.CENTER
     run = p.add_run(
         "LISTE DES ETUDIANTS PRESELECTIONNES POUR BENEFICIER DE LA BOURSE "
-        "DE COOPERATION MAROCAINE AU TITRE DE L\u2019ANNEE ACADEMIQUE 2025-2026"
+        "DE COOPERATION TUNISIENNE AU TITRE DE L\u2019ANNEE ACADEMIQUE 2026-2027"
     )
     set_run_font(run, size=10, bold=True)
 
