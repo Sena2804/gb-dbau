@@ -19,6 +19,15 @@ import pandas as pd
 
 DB_PATH = "cnbau_session.db"
 BACKUP_DIR = Path("backups")
+GLOBAL_QUOTA_FILIERE = "Toutes filières"
+
+TUNISIA_LICENSE_QUOTAS = {
+    "sciences de l'informatique": 5,
+    "obstétrique": 1,
+    "economie ou gestion": 5,
+    "cycle préparatoire scientifique ou technique": 2,
+}
+TUNISIA_MASTER_QUOTA = 5
 
 NIVEAU_MAP = {
     "BAC + 2 ANS": "Bac + 2 ans",
@@ -320,6 +329,12 @@ def _normalize_header(value: object) -> str:
     return re.sub(r"\s+", " ", text).strip().upper()
 
 
+def _quota_lookup_key(value: object) -> str:
+    text = unicodedata.normalize("NFKD", str(value or ""))
+    text = "".join(char for char in text if not unicodedata.combining(char))
+    return re.sub(r"\s+", " ", text).strip().lower()
+
+
 def _find_candidate_columns(ws) -> tuple[int, dict[str, int]]:
     aliases = {
         "numero": ("N°", "NO", "NUMERO"),
@@ -567,7 +582,19 @@ def _parse_real_excel(excel_path: str) -> list[dict]:
 
 def _parse_quotas_from_excel(excel_path: str) -> dict:
     quotas = {}
-    for group in _parse_real_excel_groups(excel_path):
+    groups = _parse_real_excel_groups(excel_path)
+    if _session_prefix(excel_path) == "TUN":
+        for group in groups:
+            niveau = group["niveau_etudes"]
+            filiere = group["filiere"]
+            if niveau == "Licence":
+                quota = TUNISIA_LICENSE_QUOTAS.get(_quota_lookup_key(filiere), group["quota"])
+                quotas[(niveau, filiere)] = quota
+        if any(group["niveau_etudes"] == "Master" for group in groups):
+            quotas[("Master", GLOBAL_QUOTA_FILIERE)] = TUNISIA_MASTER_QUOTA
+        return quotas
+
+    for group in groups:
         quotas[(group["niveau_etudes"], group["filiere"])] = group["quota"]
     return quotas
 
@@ -1357,7 +1384,10 @@ def export_quotas_to_xlsx(output_path: str) -> str:
 
         for q in group:
             key       = (q["niveau_etudes"], q["filiere"])
-            fav       = fav_counts.get(key, 0)
+            if q["filiere"] == GLOBAL_QUOTA_FILIERE:
+                fav = sum(count for (niv, _), count in fav_counts.items() if niv == q["niveau_etudes"])
+            else:
+                fav = fav_counts.get(key, 0)
             restantes = q["nb_places"] - fav
 
             total_places    += q["nb_places"]
@@ -1419,10 +1449,16 @@ def transfer_quota(source_niveau: str, source_filiere: str,
 
         quota_source = row_src["nb_places"]
 
-        fav_row = conn.execute(
-            "SELECT COUNT(*) as n FROM candidatures WHERE travail_id = ? AND avis = 'Favorable' AND niveau_etudes = ? AND filiere = ?",
-            (travail_id, source_niveau, source_filiere),
-        ).fetchone()
+        if source_filiere == GLOBAL_QUOTA_FILIERE:
+            fav_row = conn.execute(
+                "SELECT COUNT(*) as n FROM candidatures WHERE travail_id = ? AND avis = 'Favorable' AND niveau_etudes = ?",
+                (travail_id, source_niveau),
+            ).fetchone()
+        else:
+            fav_row = conn.execute(
+                "SELECT COUNT(*) as n FROM candidatures WHERE travail_id = ? AND avis = 'Favorable' AND niveau_etudes = ? AND filiere = ?",
+                (travail_id, source_niveau, source_filiere),
+            ).fetchone()
         fav_source  = fav_row["n"]
         disponibles = quota_source - fav_source
 

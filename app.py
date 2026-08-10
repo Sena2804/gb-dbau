@@ -153,6 +153,33 @@ active_travail = next((t for t in travaux if t["actif"]), None)
 if active_travail:
     st.caption(f"Travail actif : **{active_travail['nom']}**")
 
+
+def quota_key_for(niveau: str, filiere: str) -> tuple[str, str] | None:
+    exact_key = (niveau, filiere)
+    if exact_key in quotas:
+        return exact_key
+    global_key = (niveau, db.GLOBAL_QUOTA_FILIERE)
+    if global_key in quotas:
+        return global_key
+    return None
+
+
+def favorable_count_for(quota_key: tuple[str, str] | None, fav_counts: dict) -> int:
+    if quota_key is None:
+        return 0
+    niveau, filiere = quota_key
+    if filiere == db.GLOBAL_QUOTA_FILIERE:
+        return sum(count for (niv, _), count in fav_counts.items() if niv == niveau)
+    return fav_counts.get(quota_key, 0)
+
+
+def favorables_for_quota_display(fav_counts: dict) -> dict:
+    display_counts = dict(fav_counts)
+    for niveau, filiere in quotas:
+        if filiere == db.GLOBAL_QUOTA_FILIERE:
+            display_counts[(niveau, filiere)] = favorable_count_for((niveau, filiere), fav_counts)
+    return display_counts
+
 # ---------------------------------------------------------------------------
 # KPIs
 # ---------------------------------------------------------------------------
@@ -267,10 +294,10 @@ with tab_liste:
         except (ValueError, TypeError):
             moyenne = 0.0
 
-        key_quota  = (row["niveau_etudes"], row["filiere"])
+        key_quota  = quota_key_for(row["niveau_etudes"], row["filiere"])
         quota_full = (
-            quotas.get(key_quota) is not None
-            and fav_counts_local.get(key_quota, 0) >= quotas.get(key_quota)
+            key_quota is not None
+            and favorable_count_for(key_quota, fav_counts_local) >= quotas[key_quota]
         )
         _num = row.get("numero", id_demande)
 
@@ -360,6 +387,7 @@ with tab_liste:
 
 with tab_quotas:
     fav = cached_get_favorables_count()
+    fav_display = favorables_for_quota_display(fav)
     st.markdown("<div style='height:1rem'></div>", unsafe_allow_html=True)
     st.markdown(section_header("monitoring", "État d'avancement des quotas"), unsafe_allow_html=True)
     st.caption("Aperçu en temps réel des places disponibles par filière et par niveau.")
@@ -371,7 +399,7 @@ with tab_quotas:
             continue
         niveau_quotas = dict(sorted(niveau_quotas.items(), key=lambda item: item[0][1]))
         st.markdown(f'<div class="niveau-label">{niveau}</div>', unsafe_allow_html=True)
-        st.markdown(render_quota_grid(niveau, niveau_quotas, fav), unsafe_allow_html=True)
+        st.markdown(render_quota_grid(niveau, niveau_quotas, fav_display), unsafe_allow_html=True)
         st.markdown("<div style='height:0.5rem'></div>", unsafe_allow_html=True)
 
 # ===========================================================================
@@ -423,8 +451,9 @@ with tab_eval:
             fav_counts    = cached_get_favorables_count()
             niveau        = candidat["niveau_etudes"]
             filiere       = candidat["filiere"]
-            places        = quotas.get((niveau, filiere))
-            selectionnes  = fav_counts.get((niveau, filiere), 0)
+            key_quota     = quota_key_for(niveau, filiere)
+            places        = quotas.get(key_quota) if key_quota else None
+            selectionnes  = favorable_count_for(key_quota, fav_counts)
             quota_atteint = places is not None and selectionnes >= places
 
             col_info_panel, col_actions = st.columns([2, 1], gap="large")
@@ -433,7 +462,8 @@ with tab_eval:
                 st.markdown(render_candidat_card(candidat), unsafe_allow_html=True)
 
             with col_actions:
-                st.markdown(render_quota_mini(filiere, niveau, selectionnes, places, COLORS), unsafe_allow_html=True)
+                quota_label = key_quota[1] if key_quota else filiere
+                st.markdown(render_quota_mini(quota_label, niveau, selectionnes, places, COLORS), unsafe_allow_html=True)
 
                 if quota_atteint and candidat["avis"] != "Favorable":
                     st.error("⚠️ Quota atteint — avis favorable impossible")
@@ -525,7 +555,7 @@ with tab_realloc:
         src_filieres = []
         for (niv, fil), places in sorted(realloc_quotas.items(), key=lambda x: x[0][1]):
             if niv == src_niveau:
-                dispo = places - realloc_fav.get((niv, fil), 0)
+                dispo = places - favorable_count_for((niv, fil), realloc_fav)
                 if dispo > 0:
                     src_filieres.append(fil)
 
@@ -538,7 +568,7 @@ with tab_realloc:
         if src_filieres and src_filiere in src_filieres:
             src_key   = (src_niveau, src_filiere)
             src_places = realloc_quotas.get(src_key, 0)
-            src_fav    = realloc_fav.get(src_key, 0)
+            src_fav    = favorable_count_for(src_key, realloc_fav)
             src_dispo  = src_places - src_fav
             st.info(f"Quota actuel : **{src_places}** | Favorables : **{src_fav}** | Disponibles : **{src_dispo}**")
         else:
@@ -564,7 +594,7 @@ with tab_realloc:
         if dest_filieres and dest_filiere in dest_filieres:
             dest_key    = (dest_niveau, dest_filiere)
             dest_places = realloc_quotas.get(dest_key, 0)
-            dest_fav    = realloc_fav.get(dest_key, 0)
+            dest_fav    = favorable_count_for(dest_key, realloc_fav)
             st.info(f"Quota actuel : **{dest_places}** | Favorables : **{dest_fav}**")
 
     with st.form("transfer_form"):
