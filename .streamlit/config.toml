@@ -5,8 +5,16 @@ secondaryBackgroundColor = "#f6f8fa"
 textColor = "#24292f"
 font = "sans serif"
 
+[global]
+toolbarMode = "minimal"
+showErrorDetails = "none"
+showErrorLinks = false
+
 [client]
 toolbarMode = "minimal"
+
+[ui]
+hideTopBar = true
 
 [server]
 headless = true

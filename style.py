@@ -219,6 +219,24 @@ def build_css(colors: dict, light: bool) -> str:
 <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Rounded:opsz,wght,FILL,GRAD@24,400,1,0" rel="stylesheet">
 <style>
     {watermark_css}
+    #MainMenu,
+    footer,
+    [data-testid="stToolbar"],
+    [data-testid="stDecoration"],
+    [data-testid="viewerBadge"],
+    [data-testid="stStatusWidget"],
+    [data-testid="manage-app-button"],
+    [data-testid="stAppDeployButton"],
+    .stDeployButton {{
+        display: none !important;
+        visibility: hidden !important;
+        height: 0 !important;
+    }}
+
+    header[data-testid="stHeader"] {{
+        background: transparent !important;
+    }}
+
     :root {{
         --bg-page: {colors["bg_page"]};
         --bg-card: {colors["bg_card"]};

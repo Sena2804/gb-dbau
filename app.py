@@ -20,7 +20,15 @@ from ui_helper import (
 # Configuration
 # ---------------------------------------------------------------------------
 
-st.set_page_config(page_title="CNaBAU - Bourse du Maroc", layout="wide")
+st.set_page_config(
+    page_title="CNaBAU - Bourse du Maroc",
+    layout="wide",
+    menu_items={
+        "Get help": None,
+        "Report a bug": None,
+        "About": None,
+    },
+)
 
 PAGE_SIZE = 15
 AUTH_CONTEXT = require_auth()
@@ -871,6 +879,10 @@ with st.sidebar:
         st.markdown("### Sauvegarde des données")
         summary = db.summarize_db()
         st.caption(f"{summary['travaux']} travaux · {summary['candidatures']} candidatures")
+        st.warning(
+            "Sur Streamlit Cloud, le stockage serveur peut être réinitialisé. "
+            "La sauvegarde durable est le fichier .db téléchargé et conservé hors de Streamlit."
+        )
 
         db_bytes = db.read_db_bytes()
         st.download_button(

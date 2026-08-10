@@ -102,6 +102,24 @@ def require_auth() -> dict[str, Any]:
                 display: none;
             }
 
+            #MainMenu,
+            footer,
+            [data-testid="stToolbar"],
+            [data-testid="stDecoration"],
+            [data-testid="viewerBadge"],
+            [data-testid="stStatusWidget"],
+            [data-testid="manage-app-button"],
+            [data-testid="stAppDeployButton"],
+            .stDeployButton {
+                display: none !important;
+                visibility: hidden !important;
+                height: 0 !important;
+            }
+
+            header[data-testid="stHeader"] {
+                background: transparent !important;
+            }
+
             .auth-brand {
                 padding-top: 10vh;
             }
