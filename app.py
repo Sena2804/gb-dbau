@@ -1,4 +1,5 @@
 import re
+from html import escape as html_escape
 from pathlib import Path
 
 import streamlit as st
@@ -249,12 +250,15 @@ with tab_liste:
         .str.extract(r"(\d+(?:[.,]\d+)?)", expand=False)
         .str.replace(",", ".", regex=False)
         .astype(float)
+        .fillna(-1)
     )
-    sort_cols       = ["_niv_order", "filiere"]
-    ascending_flags = [True, True]
+    sort_cols       = ["_niv_order"]
+    ascending_flags = [True]
     if "moyenne" in filtered_df.columns:
         sort_cols.append("_moyenne_num")
         ascending_flags.append(False)
+    sort_cols.append("filiere")
+    ascending_flags.append(True)
 
     filtered_df = (
         filtered_df
@@ -288,11 +292,12 @@ with tab_liste:
     for _, row in page_df.iterrows():
         id_demande = row["id_demande"]
         avis       = row["avis"]
+        moyenne_raw = str(row.get("moyenne") or "").strip()
         try:
-            match = re.search(r"\d+(?:[.,]\d+)?", str(row.get("moyenne") or ""))
-            moyenne = float(match.group(0).replace(",", ".")) if match else 0.0
+            match = re.search(r"\d+(?:[.,]\d+)?", moyenne_raw)
+            moyenne_display = f"{float(match.group(0).replace(',', '.')):.2f}" if match else html_escape(moyenne_raw or "—")
         except (ValueError, TypeError):
-            moyenne = 0.0
+            moyenne_display = html_escape(moyenne_raw or "—")
 
         key_quota  = quota_key_for(row["niveau_etudes"], row["filiere"])
         quota_full = (
@@ -325,7 +330,7 @@ with tab_liste:
                 unsafe_allow_html=True,
             )
             cols[4].markdown(
-                f'<div style="padding:12px 0"><span class="moyenne-txt">{moyenne:.2f}</span></div>',
+                f'<div style="padding:12px 0"><span class="moyenne-txt">{moyenne_display}</span></div>',
                 unsafe_allow_html=True,
             )
             cols[5].markdown(
