@@ -19,6 +19,7 @@ build/
 Thumbs.db
 
 cnbau_session.db
+backups/
 export_*
 Tableau_FU_MAROC2026.xlsx
 Tableau_FP MAROC2026.xlsx

@@ -854,6 +854,8 @@ with st.sidebar:
             with temp_path.open("wb") as f:
                 f.write(new_uploaded.getvalue())
             try:
+                if db.is_db_loaded():
+                    db.backup_db("before_import")
                 n = db.load_excel_to_db(str(temp_path), new_travail_name or new_uploaded.name.rsplit(".", 1)[0])
             except (ValueError, KeyError) as exc:
                 st.error(f"Le fichier Excel n'est pas compatible avec la session Maroc 2026 : {exc}")
@@ -863,6 +865,59 @@ with st.sidebar:
                 st.rerun()
             finally:
                 temp_path.unlink(missing_ok=True)
+
+        st.divider()
+
+        st.markdown("### Sauvegarde des données")
+        summary = db.summarize_db()
+        st.caption(f"{summary['travaux']} travaux · {summary['candidatures']} candidatures")
+
+        db_bytes = db.read_db_bytes()
+        st.download_button(
+            "Télécharger la base (.db)",
+            data=db_bytes,
+            file_name="cnbau_session_backup.db",
+            mime="application/octet-stream",
+            use_container_width=True,
+            icon=":material/download:",
+            disabled=not bool(db_bytes),
+        )
+
+        if st.button("Créer une sauvegarde serveur", use_container_width=True, icon=":material/save:"):
+            try:
+                backup_path = db.backup_db("manual")
+            except FileNotFoundError as exc:
+                st.warning(str(exc))
+            else:
+                st.success(f"Sauvegarde créée : {backup_path.name}")
+
+        restore_upload = st.file_uploader(
+            "Restaurer une sauvegarde .db",
+            type=["db"],
+            key="restore_db_upload",
+        )
+        confirm_restore = st.checkbox(
+            "Je confirme le remplacement de la base actuelle",
+            key="confirm_restore_db",
+        )
+        if restore_upload and st.button(
+            "Restaurer la base",
+            type="primary",
+            use_container_width=True,
+            icon=":material/restore:",
+            disabled=not confirm_restore,
+        ):
+            try:
+                restored = db.restore_db_from_bytes(restore_upload.getvalue())
+            except (ValueError, OSError) as exc:
+                st.error(f"Restauration impossible : {exc}")
+            else:
+                invalidate_cache()
+                st.success(
+                    f"Base restaurée : {restored['travaux']} travaux, "
+                    f"{restored['candidatures']} candidatures."
+                )
+                st.rerun()
 
         st.divider()
 

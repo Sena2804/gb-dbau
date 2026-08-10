@@ -9,6 +9,7 @@ OPTIMISATIONS :
 import io
 import json
 import re
+import shutil
 import sqlite3
 import unicodedata
 from datetime import datetime
@@ -17,6 +18,7 @@ from pathlib import Path
 import pandas as pd
 
 DB_PATH = "cnbau_session.db"
+BACKUP_DIR = Path("backups")
 
 NIVEAU_MAP = {
     "BAC + 2 ANS": "Bac + 2 ans",
@@ -1384,6 +1386,94 @@ def is_db_loaded() -> bool:
     return count > 0
 
 
+def backup_db(label: str = "manual") -> Path:
+    source_path = Path(DB_PATH)
+    if not source_path.exists():
+        raise FileNotFoundError("Aucune base de donnees a sauvegarder.")
+
+    BACKUP_DIR.mkdir(exist_ok=True)
+    safe_label = re.sub(r"[^A-Za-z0-9_-]+", "_", label).strip("_") or "manual"
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    backup_path = BACKUP_DIR / f"cnbau_session_{safe_label}_{timestamp}.db"
+
+    source = sqlite3.connect(source_path)
+    target = sqlite3.connect(backup_path)
+    try:
+        source.backup(target)
+    finally:
+        target.close()
+        source.close()
+
+    return backup_path
+
+
+def read_db_bytes() -> bytes:
+    db_path = Path(DB_PATH)
+    if not db_path.exists():
+        return b""
+    return db_path.read_bytes()
+
+
+def summarize_db(path: str | Path = DB_PATH) -> dict:
+    db_path = Path(path)
+    if not db_path.exists():
+        return {"exists": False, "travaux": 0, "candidatures": 0, "avis": {}}
+
+    conn = sqlite3.connect(db_path)
+    try:
+        conn.row_factory = sqlite3.Row
+        tables = {
+            row["name"]
+            for row in conn.execute(
+                "SELECT name FROM sqlite_master WHERE type = 'table'"
+            ).fetchall()
+        }
+        if not {"travaux", "candidatures", "quotas"}.issubset(tables):
+            raise ValueError("Le fichier ne contient pas une sauvegarde CNBAU valide.")
+
+        travaux = conn.execute("SELECT COUNT(*) FROM travaux").fetchone()[0]
+        candidatures = conn.execute("SELECT COUNT(*) FROM candidatures").fetchone()[0]
+        avis_rows = conn.execute(
+            "SELECT avis, COUNT(*) AS total FROM candidatures GROUP BY avis ORDER BY avis"
+        ).fetchall()
+        avis = {row["avis"]: row["total"] for row in avis_rows}
+        return {
+            "exists": True,
+            "travaux": travaux,
+            "candidatures": candidatures,
+            "avis": avis,
+        }
+    finally:
+        conn.close()
+
+
+def restore_db_from_bytes(data: bytes) -> dict:
+    if not data:
+        raise ValueError("La sauvegarde est vide.")
+
+    temp_path = Path(f"{DB_PATH}.restore.tmp")
+    temp_path.write_bytes(data)
+
+    try:
+        conn = sqlite3.connect(temp_path)
+        try:
+            integrity = conn.execute("PRAGMA integrity_check").fetchone()[0]
+            if integrity != "ok":
+                raise ValueError(f"Sauvegarde SQLite invalide : {integrity}")
+        finally:
+            conn.close()
+
+        summary = summarize_db(temp_path)
+        if Path(DB_PATH).exists():
+            backup_db("before_restore")
+        shutil.move(str(temp_path), DB_PATH)
+        return summary
+    except Exception:
+        temp_path.unlink(missing_ok=True)
+        raise
+
+
 def reset_db():
     if Path(DB_PATH).exists():
+        backup_db("before_reset")
         Path(DB_PATH).unlink()
