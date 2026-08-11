@@ -27,7 +27,8 @@ TUNISIA_LICENSE_QUOTAS = {
     "economie ou gestion": 5,
     "cycle préparatoire scientifique ou technique": 2,
 }
-TUNISIA_MASTER_QUOTA = 5
+TUNISIA_MASTER_QUOTA = 4
+TUNISIA_DOCTORATE_QUOTA = 1
 
 NIVEAU_MAP = {
     "BAC + 2 ANS": "Bac + 2 ans",
@@ -657,6 +658,8 @@ def _parse_quotas_from_excel(excel_path: str, sheet_name: str | None = None) -> 
                 quotas[(niveau, filiere)] = quota
         if any(group["niveau_etudes"] == "Master" for group in groups):
             quotas[("Master", GLOBAL_QUOTA_FILIERE)] = TUNISIA_MASTER_QUOTA
+        if any(group["niveau_etudes"] == "Doctorat" for group in groups):
+            quotas[("Doctorat", GLOBAL_QUOTA_FILIERE)] = TUNISIA_DOCTORATE_QUOTA
         return quotas
 
     for group in groups:
