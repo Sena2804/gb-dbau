@@ -393,8 +393,8 @@ def _moyenne_to_float(value: object) -> float | None:
         return None
 
 
-def _session_prefix(excel_path: str) -> str:
-    kind = _session_kind(excel_path)
+def _session_prefix(excel_path: str, sheet_name: str | None = None) -> str:
+    kind = _session_kind(excel_path, sheet_name)
     if kind == "tunisia":
         return "TUN"
     if kind == "morocco":
@@ -402,7 +402,14 @@ def _session_prefix(excel_path: str) -> str:
     return "CNA"
 
 
-def _session_kind(excel_path: str) -> str:
+def _session_kind(excel_path: str, sheet_name: str | None = None) -> str:
+    if sheet_name:
+        normalized_sheet = _normalize_header(sheet_name)
+        if normalized_sheet == "TUNISIE":
+            return "tunisia"
+        if normalized_sheet == "MAROC":
+            return "morocco"
+
     stem = Path(excel_path).stem.upper()
     if "TUNIS" in stem:
         return "tunisia"
@@ -417,7 +424,7 @@ def _session_kind(excel_path: str) -> str:
             sheet_names = {_normalize_header(name) for name in wb.sheetnames}
             if "TUNISIE" in sheet_names:
                 return "tunisia"
-            if sheet_names == {"MAROC"}:
+            if "MAROC" in sheet_names:
                 return "morocco"
         finally:
             wb.close()
@@ -425,6 +432,26 @@ def _session_kind(excel_path: str) -> str:
         pass
 
     return "generic"
+
+
+def _country_sheets(excel_path: str) -> list[tuple[str, str]]:
+    try:
+        from openpyxl import load_workbook
+
+        wb = load_workbook(excel_path, read_only=True, data_only=True)
+        try:
+            sheets = []
+            for sheet_name in wb.sheetnames:
+                normalized_sheet = _normalize_header(sheet_name)
+                if normalized_sheet == "TUNISIE":
+                    sheets.append((sheet_name, "tunisia"))
+                elif normalized_sheet == "MAROC":
+                    sheets.append((sheet_name, "morocco"))
+            return sheets
+        finally:
+            wb.close()
+    except Exception:
+        return []
 
 
 def _infer_niveau_from_diplome(diplome: str) -> str:
@@ -524,15 +551,16 @@ def _candidate_from_row(row) -> dict | None:
     return None
 
 
-def _parse_real_excel_groups(excel_path: str) -> list[dict]:
+def _parse_real_excel_groups(excel_path: str, sheet_name: str | None = None) -> list[dict]:
     from openpyxl import load_workbook
 
     wb = load_workbook(excel_path, data_only=True)
     filiere_lookup = _build_filiere_lookup()
     groups = []
-    session_kind = _session_kind(excel_path)
+    session_kind = _session_kind(excel_path, sheet_name)
     sheet_names = {_normalize_header(name) for name in wb.sheetnames}
-    restrict_to_tunisia_sheet = session_kind == "tunisia" and "TUNISIE" in sheet_names
+    selected_sheet = _normalize_header(sheet_name) if sheet_name else ""
+    restrict_to_tunisia_sheet = not sheet_name and session_kind == "tunisia" and "TUNISIE" in sheet_names
 
     def flush_group(niveau: str, filiere: str, quota: int | None, candidates: list[dict]):
         if not candidates or not filiere:
@@ -553,6 +581,8 @@ def _parse_real_excel_groups(excel_path: str) -> list[dict]:
         })
 
     for ws in wb.worksheets:
+        if selected_sheet and _normalize_header(ws.title) != selected_sheet:
+            continue
         if restrict_to_tunisia_sheet and _normalize_header(ws.title) != "TUNISIE":
             continue
 
@@ -593,9 +623,9 @@ def _parse_real_excel_groups(excel_path: str) -> list[dict]:
     return groups
 
 
-def _parse_real_excel(excel_path: str) -> list[dict]:
-    groups = _parse_real_excel_groups(excel_path)
-    prefix = _session_prefix(excel_path)
+def _parse_real_excel(excel_path: str, sheet_name: str | None = None) -> list[dict]:
+    groups = _parse_real_excel_groups(excel_path, sheet_name)
+    prefix = _session_prefix(excel_path, sheet_name)
     candidates = []
     numero = 1
 
@@ -615,10 +645,10 @@ def _parse_real_excel(excel_path: str) -> list[dict]:
     return candidates
 
 
-def _parse_quotas_from_excel(excel_path: str) -> dict:
+def _parse_quotas_from_excel(excel_path: str, sheet_name: str | None = None) -> dict:
     quotas = {}
-    groups = _parse_real_excel_groups(excel_path)
-    if _session_kind(excel_path) == "tunisia":
+    groups = _parse_real_excel_groups(excel_path, sheet_name)
+    if _session_kind(excel_path, sheet_name) == "tunisia":
         for group in groups:
             niveau = group["niveau_etudes"]
             filiere = group["filiere"]
@@ -699,6 +729,26 @@ def _is_real_cnabau_file(excel_path: str) -> bool:
 
 def load_excel_to_db(excel_path: str, travail_name: str | None = None) -> int:
     if _is_real_cnabau_file(excel_path):
+        country_sheets = _country_sheets(excel_path)
+        if len(country_sheets) > 1:
+            total = 0
+            first_travail_id = None
+            conn = get_connection()
+            try:
+                for sheet_name, _ in country_sheets:
+                    name = f"{travail_name or _default_travail_name(excel_path)} - {sheet_name}"
+                    loaded, travail_id = _load_real_excel_into_connection(conn, excel_path, name, sheet_name)
+                    if first_travail_id is None:
+                        first_travail_id = travail_id
+                    total += loaded
+                if first_travail_id is not None:
+                    conn.execute("UPDATE travaux SET actif = CASE WHEN id = ? THEN 1 ELSE 0 END", (first_travail_id,))
+                conn.commit()
+            finally:
+                conn.close()
+            return total
+        if len(country_sheets) == 1:
+            return _load_real_excel(excel_path, travail_name, country_sheets[0][0])
         return _load_real_excel(excel_path, travail_name)
     return _load_flat_excel(excel_path, travail_name)
 
@@ -708,14 +758,18 @@ def _default_travail_name(excel_path: str) -> str:
     return stem.title() if stem else "Nouveau travail"
 
 
-def _load_real_excel(excel_path: str, travail_name: str | None = None) -> int:
-    candidates = _parse_real_excel(excel_path)
+def _load_real_excel_into_connection(
+    conn: sqlite3.Connection,
+    excel_path: str,
+    travail_name: str | None = None,
+    sheet_name: str | None = None,
+) -> tuple[int, int]:
+    candidates = _parse_real_excel(excel_path, sheet_name)
     candidates = _apply_duplicate_policy(candidates)
-    quotas = _parse_quotas_from_excel(excel_path)
+    quotas = _parse_quotas_from_excel(excel_path, sheet_name)
     if not quotas:
         raise ValueError("Aucun quota n'a été trouvé dans le fichier Excel.")
 
-    conn = get_connection()
     travail_id = _create_travail(conn, travail_name or _default_travail_name(excel_path), Path(excel_path).name)
     for c in candidates:
         conn.execute(
@@ -733,9 +787,21 @@ def _load_real_excel(excel_path: str, travail_name: str | None = None) -> int:
                VALUES (?, ?, ?, ?)""",
             (travail_id, niveau, filiere, nb_places),
         )
-    conn.commit()
-    conn.close()
-    return len(candidates)
+    return len(candidates), travail_id
+
+
+def _load_real_excel(
+    excel_path: str,
+    travail_name: str | None = None,
+    sheet_name: str | None = None,
+) -> int:
+    conn = get_connection()
+    try:
+        total, _ = _load_real_excel_into_connection(conn, excel_path, travail_name, sheet_name)
+        conn.commit()
+        return total
+    finally:
+        conn.close()
 
 
 def _load_flat_excel(excel_path: str, travail_name: str | None = None) -> int:

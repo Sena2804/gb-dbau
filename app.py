@@ -80,7 +80,7 @@ if not db.is_db_loaded():
         try:
             n = db.load_excel_to_db(str(temp_path), uploaded.name.rsplit(".", 1)[0])
         except (ValueError, KeyError) as exc:
-            st.error(f"Le fichier Excel n'est pas compatible avec la session Tunisie 2026-2027 : {exc}")
+            st.error(f"Le fichier Excel n'est pas compatible avec la session de bourse : {exc}")
             st.stop()
         finally:
             temp_path.unlink(missing_ok=True)
@@ -901,10 +901,10 @@ with st.sidebar:
                     db.backup_db("before_import")
                 n = db.load_excel_to_db(str(temp_path), new_travail_name or new_uploaded.name.rsplit(".", 1)[0])
             except (ValueError, KeyError) as exc:
-                st.error(f"Le fichier Excel n'est pas compatible avec la session Tunisie 2026-2027 : {exc}")
+                st.error(f"Le fichier Excel n'est pas compatible avec la session de bourse : {exc}")
             else:
                 invalidate_cache()
-                st.success(f"{n} candidatures ont été chargées dans un nouveau travail.")
+                st.success(f"{n} candidatures ont été chargées dans un ou plusieurs travaux.")
                 st.rerun()
             finally:
                 temp_path.unlink(missing_ok=True)
