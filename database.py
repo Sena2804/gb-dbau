@@ -394,12 +394,37 @@ def _moyenne_to_float(value: object) -> float | None:
 
 
 def _session_prefix(excel_path: str) -> str:
-    stem = Path(excel_path).stem.upper()
-    if "TUNIS" in stem:
+    kind = _session_kind(excel_path)
+    if kind == "tunisia":
         return "TUN"
-    if "MAROC" in stem:
+    if kind == "morocco":
         return "MAR"
     return "CNA"
+
+
+def _session_kind(excel_path: str) -> str:
+    stem = Path(excel_path).stem.upper()
+    if "TUNIS" in stem:
+        return "tunisia"
+    if "MAROC" in stem:
+        return "morocco"
+
+    try:
+        from openpyxl import load_workbook
+
+        wb = load_workbook(excel_path, read_only=True, data_only=True)
+        try:
+            sheet_names = {_normalize_header(name) for name in wb.sheetnames}
+            if "TUNISIE" in sheet_names:
+                return "tunisia"
+            if sheet_names == {"MAROC"}:
+                return "morocco"
+        finally:
+            wb.close()
+    except Exception:
+        pass
+
+    return "generic"
 
 
 def _infer_niveau_from_diplome(diplome: str) -> str:
@@ -505,6 +530,9 @@ def _parse_real_excel_groups(excel_path: str) -> list[dict]:
     wb = load_workbook(excel_path, data_only=True)
     filiere_lookup = _build_filiere_lookup()
     groups = []
+    session_kind = _session_kind(excel_path)
+    sheet_names = {_normalize_header(name) for name in wb.sheetnames}
+    restrict_to_tunisia_sheet = session_kind == "tunisia" and "TUNISIE" in sheet_names
 
     def flush_group(niveau: str, filiere: str, quota: int | None, candidates: list[dict]):
         if not candidates or not filiere:
@@ -525,6 +553,9 @@ def _parse_real_excel_groups(excel_path: str) -> list[dict]:
         })
 
     for ws in wb.worksheets:
+        if restrict_to_tunisia_sheet and _normalize_header(ws.title) != "TUNISIE":
+            continue
+
         current_niveau = ""
         current_filiere = ""
         current_quota = None
@@ -538,6 +569,10 @@ def _parse_real_excel_groups(excel_path: str) -> list[dict]:
 
             niveau = _extract_niveau_from_text(row_text)
             if niveau:
+                flush_group(current_niveau, current_filiere, current_quota, current_candidates)
+                current_filiere = ""
+                current_quota = None
+                current_candidates = []
                 current_niveau = niveau
                 continue
 
@@ -583,7 +618,7 @@ def _parse_real_excel(excel_path: str) -> list[dict]:
 def _parse_quotas_from_excel(excel_path: str) -> dict:
     quotas = {}
     groups = _parse_real_excel_groups(excel_path)
-    if _session_prefix(excel_path) == "TUN":
+    if _session_kind(excel_path) == "tunisia":
         for group in groups:
             niveau = group["niveau_etudes"]
             filiere = group["filiere"]
