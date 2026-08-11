@@ -23,11 +23,18 @@ GLOBAL_QUOTA_FILIERE = "Toutes filières"
 
 TUNISIA_LICENSE_QUOTAS = {
     "sciences de l'informatique": 5,
-    "obstétrique": 1,
-    "economie ou gestion": 5,
-    "cycle préparatoire scientifique ou technique": 2,
+    "obstetrique": 1,
+    "economie ou gestion": 8,
+    "cycle preparatoire scientifique ou technique": 2,
 }
-TUNISIA_MASTER_QUOTA = 4
+TUNISIA_MASTER_QUOTAS = {
+    "nutrition et technologie agroalimentaire": 1,
+    "systeme d'information, reseaux et numerique": 3,
+    "gestion": 3,
+    "sciences de l'informatique": 1,
+    "science des sols-agronomie": 1,
+    "administration des finances et du tresor": 1,
+}
 TUNISIA_DOCTORATE_QUOTA = 1
 
 NIVEAU_MAP = {
@@ -113,6 +120,7 @@ def init_db():
             PRIMARY KEY (travail_id, niveau_etudes, filiere)
         )
     """)
+    _sync_tunisia_quota_rules(conn)
     _normalize_all_suppleant_ranks(conn)
     conn.commit()
     conn.close()
@@ -646,6 +654,16 @@ def _parse_real_excel(excel_path: str, sheet_name: str | None = None) -> list[di
     return candidates
 
 
+def _tunisia_group_quota(niveau: str, filiere: str, default_quota: int) -> int:
+    if niveau == "Licence":
+        return TUNISIA_LICENSE_QUOTAS.get(_quota_lookup_key(filiere), default_quota)
+    if niveau == "Master":
+        return TUNISIA_MASTER_QUOTAS.get(_quota_lookup_key(filiere), default_quota)
+    if niveau == "Doctorat":
+        return TUNISIA_DOCTORATE_QUOTA
+    return default_quota
+
+
 def _parse_quotas_from_excel(excel_path: str, sheet_name: str | None = None) -> dict:
     quotas = {}
     groups = _parse_real_excel_groups(excel_path, sheet_name)
@@ -653,11 +671,9 @@ def _parse_quotas_from_excel(excel_path: str, sheet_name: str | None = None) -> 
         for group in groups:
             niveau = group["niveau_etudes"]
             filiere = group["filiere"]
-            if niveau == "Licence":
-                quota = TUNISIA_LICENSE_QUOTAS.get(_quota_lookup_key(filiere), group["quota"])
+            if niveau in {"Licence", "Master"}:
+                quota = _tunisia_group_quota(niveau, filiere, group["quota"])
                 quotas[(niveau, filiere)] = quota
-        if any(group["niveau_etudes"] == "Master" for group in groups):
-            quotas[("Master", GLOBAL_QUOTA_FILIERE)] = TUNISIA_MASTER_QUOTA
         if any(group["niveau_etudes"] == "Doctorat" for group in groups):
             quotas[("Doctorat", GLOBAL_QUOTA_FILIERE)] = TUNISIA_DOCTORATE_QUOTA
         return quotas
@@ -665,6 +681,54 @@ def _parse_quotas_from_excel(excel_path: str, sheet_name: str | None = None) -> 
     for group in groups:
         quotas[(group["niveau_etudes"], group["filiere"])] = group["quota"]
     return quotas
+
+
+def _sync_tunisia_quota_rules(conn: sqlite3.Connection):
+    travail_rows = conn.execute("""
+        SELECT DISTINCT travail_id
+        FROM candidatures
+        WHERE id_demande LIKE 'TUN-%'
+    """).fetchall()
+    for travail_row in travail_rows:
+        travail_id = travail_row["travail_id"]
+        groups = conn.execute("""
+            SELECT niveau_etudes, filiere, COUNT(*) AS total
+            FROM candidatures
+            WHERE travail_id = ?
+            GROUP BY niveau_etudes, filiere
+        """, (travail_id,)).fetchall()
+
+        conn.execute(
+            "DELETE FROM quotas WHERE travail_id = ? AND niveau_etudes = ? AND filiere = ?",
+            (travail_id, "Master", GLOBAL_QUOTA_FILIERE),
+        )
+
+        has_doctorate = False
+        for group in groups:
+            niveau = group["niveau_etudes"]
+            filiere = group["filiere"]
+            if niveau == "Doctorat":
+                has_doctorate = True
+                continue
+            if niveau not in {"Licence", "Master"}:
+                continue
+            quota = _tunisia_group_quota(niveau, filiere, group["total"])
+            conn.execute(
+                """INSERT INTO quotas (travail_id, niveau_etudes, filiere, nb_places)
+                   VALUES (?, ?, ?, ?)
+                   ON CONFLICT(travail_id, niveau_etudes, filiere)
+                   DO UPDATE SET nb_places = excluded.nb_places""",
+                (travail_id, niveau, filiere, quota),
+            )
+
+        if has_doctorate:
+            conn.execute(
+                """INSERT INTO quotas (travail_id, niveau_etudes, filiere, nb_places)
+                   VALUES (?, ?, ?, ?)
+                   ON CONFLICT(travail_id, niveau_etudes, filiere)
+                   DO UPDATE SET nb_places = excluded.nb_places""",
+                (travail_id, "Doctorat", GLOBAL_QUOTA_FILIERE, TUNISIA_DOCTORATE_QUOTA),
+            )
 
 
 def _apply_duplicate_policy(candidates: list[dict]) -> list[dict]:
